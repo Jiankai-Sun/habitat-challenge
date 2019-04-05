@@ -1,0 +1,1 @@
+docker build -t rgb_submission:v0.01 -f ./rgb_Dockerfile .; bash rgb_test_locally.sh --docker-name rgb_submission:v0.01
