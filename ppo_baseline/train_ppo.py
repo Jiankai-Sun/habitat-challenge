@@ -17,8 +17,10 @@ from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
 from habitat.config.default import get_config as cfg_env
 from config.default import cfg as cfg_baseline
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
-from rl.ppo import PPO, Policy, RolloutStorage
-from rl.ppo.utils import update_linear_schedule, ppo_args, batch_obs
+# from rl.ppo import PPO, Policy,
+from rl.ppo.ppo_alg import PPO
+from rl.ppo.policy import Policy
+from rl.ppo.ppo_utils import update_linear_schedule, ppo_args, batch_obs, RolloutStorage
 from tensorboardX import SummaryWriter
 
 class NavRLEnv(habitat.RLEnv):
@@ -132,10 +134,12 @@ def construct_envs(args):
             config_env.DATASET.POINTNAVV1.CONTENT_SCENES = scenes[
                 i * scene_split_size : (i + 1) * scene_split_size
             ]
+            config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID = int(
+                config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID.split(",")[i % len(config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID.split())])
 
         # config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID = args.sim_gpu_id
 
-        agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS.strip().split(",")
+        agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS
         for sensor in agent_sensors:
             assert sensor in ["RGB_SENSOR", "DEPTH_SENSOR"]
         config_env.SIMULATOR.AGENT_0.SENSORS = agent_sensors

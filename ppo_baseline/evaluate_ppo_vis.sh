@@ -15,9 +15,8 @@
 #    --task-config "tasks/pointnav_gibson.yaml" \
 
 python -u evaluate_ppo_vis_single_env.py \
-    --model-path "data/checkpoints_mp3d/ckpt.849.pth" \
-    --sim-gpu-id 0 \
+    --model-path "../models/checkpoints_mp3d/ckpt.849.pth" \
     --pth-gpu-id 0 \
     --num-processes 1 \
     --count-test-episodes 495 \
-    --task-config "tasks/pointnav_mp3d.yaml" \
+    --task-config "tasks/pointnav_mp3d_rgbd.yaml" \

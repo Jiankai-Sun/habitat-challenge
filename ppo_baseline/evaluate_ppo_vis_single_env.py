@@ -13,8 +13,9 @@ from habitat.config.default import get_config
 from config.default import cfg as cfg_baseline
 
 from train_ppo import make_env_fn
-from rl.ppo import PPO, Policy
-from rl.ppo.utils import batch_obs
+from rl.ppo.ppo_alg import PPO
+from rl.ppo.policy import Policy
+from rl.ppo.ppo_utils import batch_obs
 import sys
 
 import numpy as np
@@ -101,7 +102,7 @@ PAUSE_TIME = 100
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, required=True)
-    parser.add_argument("--sim-gpu-id", type=int, required=True)
+    # parser.add_argument("--sim-gpu-id", type=int, required=True)
     parser.add_argument("--pth-gpu-id", type=int, required=True)
     parser.add_argument("--num-processes", type=int, required=True)
     parser.add_argument("--hidden-size", type=int, default=512)
@@ -123,6 +124,8 @@ def main():
     args = parser.parse_args()
 
     device = torch.device("cuda:{}".format(args.pth_gpu_id))
+    img_width = 120
+    img_height = 90
 
     # env_configs = []
     # baseline_configs = []
@@ -130,6 +133,9 @@ def main():
     config_env = get_config(config_file=args.task_config)
     config_env.defrost()
     config_env.DATASET.SPLIT = "val"
+    # TODO
+    # config_env.SIMULATOR.RGB_SENSOR.HFOV = 180
+    # config_env.SIMULATOR.DEPTH_SENSOR.HFOV = 180
 
     agent_sensors = args.sensors.strip().split(",")
 
@@ -200,6 +206,7 @@ def main():
         batch = batch_obs(observations)
         for sensor in batch:
             batch[sensor] = batch[sensor].to(device)
+            batch[sensor].requires_grad_()
 
         dones = False
         target_position = envs._env.current_episode.goals[0].position
@@ -215,19 +222,22 @@ def main():
                 os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
 
-            with torch.no_grad():
-                _, actions, _, test_recurrent_hidden_states = actor_critic.act(
-                    batch,
-                    test_recurrent_hidden_states,
-                    not_done_masks,
-                    deterministic=False,
-                )
+            # with torch.no_grad():
+            value, actions, _, test_recurrent_hidden_states = actor_critic.act(
+                batch,
+                test_recurrent_hidden_states,
+                not_done_masks,
+                deterministic=False,
+            )
 
             outputs = envs.step(actions.item())
 
-            # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
-            observations, rewards, dones, infos = outputs
-            observations = [observations]
+            # Get value Saliency
+            value.backward()
+            # print(batch['rgb'][0].shape) # shape: （256, 256, 3)
+            print('require_grad', batch['rgb'][0].require_grad)
+            value_saliency = batch['rgb'][0].grad
+            print('value_saliency: ', value_saliency)
 
             # mat = np.array(cv2.resize(observations[0]['rgb'], (480, 360)))
             # cv2.putText(mat, "action:" + str(actions[0].item()) + " reward:" + str(rewards),
@@ -239,12 +249,24 @@ def main():
             # cv2.moveWindow("Habitat-API Evaluation", 0, 0)
             # cv2.waitKey(PAUSE_TIME)
 
-            cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
-                        observations[0]['rgb'])  # (90, 120, 3)
+            if 'rgb' in batch.keys() and not 'depth' in batch.keys():
+                cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
+                            np.concatenate((observations[0]['rgb'], value_saliency.cpu()), axis=1))  # (90, 120, 3)
+                img_width = img_width * 2
+
+            elif 'rgb' in batch.keys() and 'depth' in batch.keys():
+                cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
+                            np.concatenate((observations[0]['rgb'][0], observations[0]['depth'], value_saliency.cpu()), axis=1))  # (90, 120, 3)
+                img_width = img_width * 3
+
+            # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
+            observations, rewards, dones, infos = outputs
+            observations = [observations]
 
             batch = batch_obs(observations)
             for sensor in batch:
                 batch[sensor] = batch[sensor].to(device)
+                batch[sensor].requires_grad_()
 
             not_done_masks = torch.tensor(
                 [0.0 if dones else 1.0],
@@ -269,8 +291,8 @@ def main():
                         episode_success[i] += 1
 
                         frame_to_video(fileloc=os.path.join("data", "video", str(video_folder_index), "%d.png"),
-                                       t_w=120,
-                                       t_h=90,
+                                       t_w=img_width,
+                                       t_h=img_height,
                                        destination=os.path.join("data", "video", str(video_folder_index) + "_True.mp4"))
                         try:
                             visualize_traj(envs, traj_coors, target_position, os.path.join('data', 'top_down_vis', '{0}_True.png'.format(video_folder_index)))
@@ -281,8 +303,8 @@ def main():
                         success_log.write('{0}:False\n'.format(video_folder_index))
 
                         frame_to_video(fileloc=os.path.join("data", "video", str(video_folder_index), "%d.png"),
-                                       t_w=120,
-                                       t_h=90,
+                                       t_w=img_width,
+                                       t_h=img_height,
                                        destination=os.path.join("data", "video", str(video_folder_index) + "_False.mp4"))
                         try:
                             visualize_traj(envs, traj_coors, target_position, os.path.join('data', 'top_down_vis', '{0}_False.png'.format(video_folder_index)))

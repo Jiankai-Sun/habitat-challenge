@@ -13,7 +13,7 @@ from habitat.config.default import get_config
 from config.default import cfg as cfg_baseline
 
 from train_ppo import make_env_fn
-from rl.ppo.ppo_alg import PPO\
+from rl.ppo.ppo_alg import PPO
 from rl.ppo.policy import Policy
 from rl.ppo.ppo_utils import batch_obs
 
@@ -52,7 +52,7 @@ def main():
         config_env.defrost()
         config_env.DATASET.SPLIT = "val"
 
-        agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS.strip().split(",")
+        agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS
         for sensor in agent_sensors:
             assert sensor in ["RGB_SENSOR", "DEPTH_SENSOR"]
         config_env.SIMULATOR.AGENT_0.SENSORS = agent_sensors

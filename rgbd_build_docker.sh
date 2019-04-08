@@ -1,1 +1,2 @@
 docker build -t rgbd_submission:v0.01 -f ./rgbd_Dockerfile .; bash rgbd_test_locally.sh --docker-name rgbd_submission:v0.01
+#docker build -t rgbd_submission:mp3d_v0.01 -f ./rgbd_Dockerfile .; bash rgbd_test_locally.sh --docker-name rgbd_submission:mp3d_v0.01

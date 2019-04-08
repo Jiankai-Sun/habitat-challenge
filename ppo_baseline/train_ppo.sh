@@ -57,9 +57,9 @@ python -u train_ppo.py \
     --lr 2.5e-4 \
     --clip-param 0.1 \
     --value-loss-coef 0.5 \
-    --num-processes 4 \
+    --num-processes 2 \
     --num-steps 128 \
-    --num-mini-batch 4 \
+    --num-mini-batch 2 \
     --num-updates 100000 \
     --use-linear-lr-decay \
     --use-linear-clip-decay \
