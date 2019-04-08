@@ -4,6 +4,22 @@
 
 --------------------------------------------------------------------------------
 ## How to Run
+### Development
+```
+docker pull registry.sensetime.com/habitat/jack/habitat:v0.03
+docker tag registry.sensetime.com/habitat/jack/habitat:v0.03 jack/habitat:v0.03 
+cd ppo_baseline
+bash run_habitat_docker.sh 
+# For lustre: bash srun_habitat_docker.sh 
+# Inside the habitat docker container
+conda activate habitat
+cd /habitat-baseline
+bash train_ppo.sh 
+bash evaluate_ppo.sh
+```
+
+### Submission
+
 ```
 bash rgbd_build_docker.sh
 bash rgb_build_docker.sh

@@ -235,7 +235,7 @@ def main():
             # Get value Saliency
             value.backward()
             # print(batch['rgb'][0].shape) # shape: （256, 256, 3)
-            print('require_grad', batch['rgb'][0].require_grad)
+            # print('require_grad', batch['rgb'][0].require_grad)
             value_saliency = batch['rgb'][0].grad
             print('value_saliency: ', value_saliency)
 
