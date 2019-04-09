@@ -386,17 +386,19 @@ def ppo_args():
         required=True,
         help="folder for storing checkpoints",
     )
-    # parser.add_argument(
-    #     "--sim-gpu-id",
-    #     type=int,
-    #     required=True,
-    #     help="gpu id on which scenes are loaded",
-    # )
+    parser.add_argument(
+        "--sim-gpu-id",
+        nargs='+',
+        type=int,
+        required=True,
+        default=[0],
+        help="gpu id on which scenes are loaded",
+    )
     parser.add_argument(
         "--pth-gpu-id",
         type=int,
         required=True,
-        help="gpu id on which pytorch runs",
+        help="gpu id on which PyTorch runs",
     )
     parser.add_argument(
         "--num-updates",
@@ -417,6 +419,13 @@ def ppo_args():
         default="tasks/pointnav.yaml",
         help="path to config yaml containing information about task",
     )
+    parser.add_argument(
+        "--model-path",
+        type=str,
+        default=None,
+        help="path to pretrained model",
+    )
+
     parser.add_argument("--seed", type=int, default=100)
 
     return parser

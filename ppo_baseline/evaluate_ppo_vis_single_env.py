@@ -24,8 +24,6 @@ import os
 import subprocess
 import shutil
 
-from gpu_mem_track import MemTracker
-import inspect
 
 def visualize_traj(env, traj_coors, pointgoal, output_file):
     """
@@ -97,6 +95,7 @@ def frame_to_video(fileloc, t_w, t_h, destination):
     if err:
         print('error', err)
         return None
+
     video = np.fromstring(out, dtype='uint8').reshape((-1, t_h, t_w, 3))  #NHWC
     return video
 
@@ -106,6 +105,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, required=True)
     # parser.add_argument("--sim-gpu-id", type=int, required=True)
+    parser.add_argument(
+        "--sim-gpu-id",
+        nargs='+',
+        type=int,
+        required=True,
+        default=[0],
+        help="gpu id on which scenes are loaded",
+    )
     parser.add_argument("--pth-gpu-id", type=int, required=True)
     parser.add_argument("--num-processes", type=int, required=True)
     parser.add_argument("--hidden-size", type=int, default=512)
@@ -127,11 +134,6 @@ def main():
     args = parser.parse_args()
 
     device = torch.device("cuda:{}".format(args.pth_gpu_id))
-    img_width = 120
-    img_height = 90
-
-    frame = inspect.currentframe()  # define a frame to track
-    gpu_tracker = MemTracker(frame)  # define a GPU tracker
 
     # env_configs = []
     # baseline_configs = []
@@ -143,12 +145,19 @@ def main():
     # config_env.SIMULATOR.RGB_SENSOR.HFOV = 180
     # config_env.SIMULATOR.DEPTH_SENSOR.HFOV = 180
 
-    agent_sensors = args.sensors.strip().split(",")
+    agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS
+    if 'RGB_SENSOR' in agent_sensors and not 'DEPTH_SENSOR' in agent_sensors:
+        img_width = 90 * 2
+        img_height = 90
+    elif 'RGB_SENSOR' in agent_sensors and 'DEPTH_SENSOR' in agent_sensors:
+        img_width = 90 * 3
+        img_height = 90
+    else:
+        raise NotImplementedError('Unsupported mode in observations')
 
     # print('agent_sensors: ', agent_sensors)
     for sensor in agent_sensors:
         assert sensor in ["RGB_SENSOR", "DEPTH_SENSOR"]
-    config_env.SIMULATOR.AGENT_0.SENSORS = agent_sensors
     config_env.freeze()
     # env_configs.append(config_env)
 
@@ -213,8 +222,6 @@ def main():
             batch[sensor] = batch[sensor].to(device)
             batch[sensor].requires_grad_()
 
-        gpu_tracker.track()
-
         dones = False
         target_position = envs._env.current_episode.goals[0].position
         # print('target_position: ', target_position)
@@ -228,7 +235,6 @@ def main():
             if not os.path.exists(os.path.join("data", "video", str(video_folder_index))):
                 os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
-            gpu_tracker.track()
             value, actions, _, test_recurrent_hidden_states = actor_critic.act(
                 batch,
                 test_recurrent_hidden_states,
@@ -236,7 +242,6 @@ def main():
                 deterministic=False,
             )
             test_recurrent_hidden_states = test_recurrent_hidden_states.detach()
-            gpu_tracker.track()
 
             outputs = envs.step(actions.item())
 
@@ -244,7 +249,7 @@ def main():
                                         create_graph=False, retain_graph=False, only_inputs=True)[0]
 
             value_saliency = abs(gradient[0].detach().cpu().numpy())
-            value_saliency = value_saliency / value_saliency.max() * 255
+            value_saliency = value_saliency / (value_saliency.max() + 1e-10) * 255
 
             # mat = np.array(cv2.resize(observations[0]['rgb'], (480, 360)))
             # cv2.putText(mat, "action:" + str(actions[0].item()) + " reward:" + str(rewards),
@@ -258,22 +263,19 @@ def main():
 
             if 'rgb' in batch.keys() and not 'depth' in batch.keys():
                 frame = np.concatenate((observations[0]['rgb'], value_saliency), axis=1)
-                img_width = img_width * 2
-
             elif 'rgb' in batch.keys() and 'depth' in batch.keys():
                 frame = np.concatenate((observations[0]['rgb'], (observations[0]['depth'] * 255).repeat([3], axis=2), value_saliency), axis=1)
-                img_width = img_width * 3
             else:
                 raise NotImplementedError('Unsupported mode to save in observations')
 
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
 
-            cv2.putText(frame, "action:" + str(actions[0].item()) + " reward:" + str(rewards),
+            cv2.putText(frame, "action: {0} reward: {0:.2f}".format(actions[0].item(), rewards),
                         (15, 15),
                         cv2.FONT_HERSHEY_TRIPLEX, 0.5, (255, 255, 255), 1)
             cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
-                        frame)  # (90, 120, 3)
+                        frame)  # (90, 90, 3)
 
             observations = [observations]
 
@@ -281,7 +283,6 @@ def main():
             for sensor in batch:
                 batch[sensor] = batch[sensor].to(device)
                 batch[sensor].requires_grad_()
-            gpu_tracker.track()
 
             not_done_masks = torch.tensor(
                 [0.0 if dones else 1.0],
