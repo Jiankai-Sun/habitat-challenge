@@ -24,6 +24,9 @@ import os
 import subprocess
 import shutil
 
+from gpu_mem_track import MemTracker
+import inspect
+
 def visualize_traj(env, traj_coors, pointgoal, output_file):
     """
     env: interative environment;
@@ -127,6 +130,9 @@ def main():
     img_width = 120
     img_height = 90
 
+    frame = inspect.currentframe()  # define a frame to track
+    gpu_tracker = MemTracker(frame)  # define a GPU tracker
+
     # env_configs = []
     # baseline_configs = []
 
@@ -166,6 +172,7 @@ def main():
 
     ppo = PPO(
         actor_critic=actor_critic,
+        icm_model=None,
         clip_param=0.1,
         ppo_epoch=4,
         num_mini_batch=32,
@@ -199,14 +206,14 @@ def main():
     success_log = open(os.path.join("data", "video", "success_log.txt"), "w")
 
     while video_folder_index < args.count_test_episodes:
-        # if video_folder_index + 1 % 5 == 0:
-        #     envs = make_env_fn(config_env, config_baseline, 0)
         observations = envs.reset()
         observations = [observations]
         batch = batch_obs(observations)
         for sensor in batch:
             batch[sensor] = batch[sensor].to(device)
             batch[sensor].requires_grad_()
+
+        gpu_tracker.track()
 
         dones = False
         target_position = envs._env.current_episode.goals[0].position
@@ -221,23 +228,23 @@ def main():
             if not os.path.exists(os.path.join("data", "video", str(video_folder_index))):
                 os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
-
-            # with torch.no_grad():
+            gpu_tracker.track()
             value, actions, _, test_recurrent_hidden_states = actor_critic.act(
                 batch,
                 test_recurrent_hidden_states,
                 not_done_masks,
                 deterministic=False,
             )
+            test_recurrent_hidden_states = test_recurrent_hidden_states.detach()
+            gpu_tracker.track()
 
             outputs = envs.step(actions.item())
 
-            # Get value Saliency
-            value.backward()
-            # print(batch['rgb'][0].shape) # shape: （256, 256, 3)
-            # print('require_grad', batch['rgb'][0].require_grad)
-            value_saliency = batch['rgb'][0].grad
-            print('value_saliency: ', value_saliency)
+            gradient = torch.autograd.grad(outputs=value, inputs=batch['rgb'],  #.cuda(),
+                                        create_graph=False, retain_graph=False, only_inputs=True)[0]
+
+            value_saliency = abs(gradient[0].detach().cpu().numpy())
+            value_saliency = value_saliency / value_saliency.max() * 255
 
             # mat = np.array(cv2.resize(observations[0]['rgb'], (480, 360)))
             # cv2.putText(mat, "action:" + str(actions[0].item()) + " reward:" + str(rewards),
@@ -250,30 +257,37 @@ def main():
             # cv2.waitKey(PAUSE_TIME)
 
             if 'rgb' in batch.keys() and not 'depth' in batch.keys():
-                cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
-                            np.concatenate((observations[0]['rgb'], value_saliency.cpu()), axis=1))  # (90, 120, 3)
+                frame = np.concatenate((observations[0]['rgb'], value_saliency), axis=1)
                 img_width = img_width * 2
 
             elif 'rgb' in batch.keys() and 'depth' in batch.keys():
-                cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
-                            np.concatenate((observations[0]['rgb'][0], observations[0]['depth'], value_saliency.cpu()), axis=1))  # (90, 120, 3)
+                frame = np.concatenate((observations[0]['rgb'], (observations[0]['depth'] * 255).repeat([3], axis=2), value_saliency), axis=1)
                 img_width = img_width * 3
+            else:
+                raise NotImplementedError('Unsupported mode to save in observations')
 
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
+
+            cv2.putText(frame, "action:" + str(actions[0].item()) + " reward:" + str(rewards),
+                        (15, 15),
+                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, (255, 255, 255), 1)
+            cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
+                        frame)  # (90, 120, 3)
+
             observations = [observations]
 
             batch = batch_obs(observations)
             for sensor in batch:
                 batch[sensor] = batch[sensor].to(device)
                 batch[sensor].requires_grad_()
+            gpu_tracker.track()
 
             not_done_masks = torch.tensor(
                 [0.0 if dones else 1.0],
                 dtype=torch.float,
                 device=device,
             )
-
             for i in range(not_done_masks.shape[0]):
                 if not_done_masks[i].item() == 0:
                     episode_spls[i] += infos["spl"]
@@ -316,7 +330,6 @@ def main():
                     video_folder_index += 1
 
                     success_log.flush()
-
             rewards = torch.tensor(
                 [rewards], dtype=torch.float, device=device
             ).unsqueeze(1)
@@ -324,7 +337,6 @@ def main():
             episode_rewards += (1 - not_done_masks) * current_episode_reward
             episode_counts += 1 - not_done_masks
             current_episode_reward *= not_done_masks
-
         episode_reward_mean = (episode_rewards / episode_counts).mean().item()
         episode_spl_mean = (episode_spls / episode_counts).mean().item()
         episode_success_mean = (episode_success / episode_counts).mean().item()
