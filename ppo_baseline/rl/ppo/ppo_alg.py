@@ -7,6 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 
 
 EPS_PPO = 1e-5
@@ -16,6 +17,7 @@ class PPO(nn.Module):
     def __init__(
         self,
         actor_critic,
+        icm_model,
         clip_param,
         ppo_epoch,
         num_mini_batch,
@@ -40,6 +42,8 @@ class PPO(nn.Module):
 
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
+
+        self.icm = icm_model
 
         self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
 
@@ -135,3 +139,20 @@ class PPO(nn.Module):
         dist_entropy_epoch /= num_updates
 
         return value_loss_epoch, action_loss_epoch, dist_entropy_epoch
+
+    def compute_intrinsic_reward(self, state, next_state, action):
+        state = torch.FloatTensor(state).to(self.device)
+        next_state = torch.FloatTensor(next_state).to(self.device)
+        action = torch.LongTensor(action).to(self.device)
+
+        action_onehot = torch.FloatTensor(
+            len(action), self.output_size).to(
+            self.device)
+        action_onehot.zero_()
+        action_onehot.scatter_(1, action.view(len(action), -1), 1)
+
+        real_next_state_feature, pred_next_state_feature, pred_action = self.icm(
+            [state, next_state, action_onehot])
+        intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1)
+        return intrinsic_reward.data.cpu().numpy()
+

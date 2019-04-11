@@ -67,6 +67,7 @@ class RolloutStorage:
         observation_space,
         action_space,
         recurrent_hidden_state_size,
+        curiosity=False
     ):
         self.observations = {}
 
@@ -82,6 +83,7 @@ class RolloutStorage:
         )
 
         self.rewards = torch.zeros(num_steps, num_envs, 1)
+        self.intrinsic_reward = torch.zeros(num_steps, num_envs, 1)
         self.value_preds = torch.zeros(num_steps + 1, num_envs, 1)
         self.returns = torch.zeros(num_steps + 1, num_envs, 1)
 
@@ -99,6 +101,7 @@ class RolloutStorage:
 
         self.num_steps = num_steps
         self.step = 0
+        self.curiosity = curiosity
 
     def to(self, device):
         for sensor in self.observations:
@@ -121,6 +124,7 @@ class RolloutStorage:
         value_preds,
         rewards,
         masks,
+        intrinsic_reward=0
     ):
         for sensor in observations:
             self.observations[sensor][self.step + 1].copy_(
@@ -133,6 +137,7 @@ class RolloutStorage:
         self.action_log_probs[self.step].copy_(action_log_probs)
         self.value_preds[self.step].copy_(value_preds)
         self.rewards[self.step].copy_(rewards)
+        self.intrinsic_reward[self.step].copy_(intrinsic_reward)
         self.masks[self.step + 1].copy_(masks)
 
         self.step = (self.step + 1) % self.num_steps
@@ -145,6 +150,9 @@ class RolloutStorage:
         self.masks[0].copy_(self.masks[-1])
 
     def compute_returns(self, next_value, use_gae, gamma, tau):
+        if self.curiosity:
+            self.rewards += self.intrinsic_reward
+
         if use_gae:
             self.value_preds[-1] = next_value
             gae = 0
@@ -336,6 +344,12 @@ def ppo_args():
         help="use generalized advantage estimation",
     )
     parser.add_argument(
+        "--use-icm",
+        action="store_true",
+        default=False,
+        help="use generalized advantage estimation",
+    )
+    parser.add_argument(
         "--use-linear-lr-decay",
         action="store_true",
         default=False,
@@ -391,7 +405,7 @@ def ppo_args():
         nargs='+',
         type=int,
         required=True,
-        default=[0],
+        default=[],
         help="gpu id on which scenes are loaded",
     )
     parser.add_argument(

@@ -52,6 +52,7 @@ fi
 
 python -u train_ppo.py \
     --use-gae \
+    --use-icm \
     --sim-gpu-id 0 \
     --pth-gpu-id 1 \
     --lr 2.5e-4 \
@@ -64,9 +65,9 @@ python -u train_ppo.py \
     --use-linear-lr-decay \
     --use-linear-clip-decay \
     --entropy-coef 0.01 \
-    --tb-log-dir "data/tb_log/tb_gibson_log_4" \
-    --log-file "data/train_gibson_4.log" \
+    --tb-log-dir "data/tb_log/tb_gibson_log_curiosity" \
+    --log-file "data/train_gibson_curiosity.log" \
     --log-interval 5 \
-    --checkpoint-folder "data/checkpoints_gibson_4" \
+    --checkpoint-folder "data/checkpoints_gibson_curiosity" \
     --checkpoint-interval 50 \
-    --task-config "tasks/pointnav_gibson.yaml" \
+    --task-config "tasks/pointnav_gibson_rgbd.yaml" \

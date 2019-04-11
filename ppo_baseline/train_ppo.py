@@ -5,23 +5,24 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
-from time import time
-from collections import deque
 import random
-import numpy as np
+from collections import deque
+from time import time
 
-import torch
 import habitat
-from habitat import logger
-from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
-from habitat.config.default import get_config as cfg_env
+import numpy as np
+import torch
 from config.default import cfg as cfg_baseline
+from habitat import logger
+from habitat.config.default import get_config as cfg_env
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
+from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
+from rl.ppo.policy import Policy, ICMModel
 # from rl.ppo import PPO, Policy,
 from rl.ppo.ppo_alg import PPO
-from rl.ppo.policy import Policy
 from rl.ppo.ppo_utils import update_linear_schedule, ppo_args, batch_obs, RolloutStorage
 from tensorboardX import SummaryWriter
+
 
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
@@ -74,9 +75,9 @@ class NavRLEnv(habitat.RLEnv):
 
     def _episode_success(self):
         if (
-            self._previous_action
-            == SIM_NAME_TO_ACTION[SimulatorActions.STOP.value]
-            and self._distance_target() < self._config_env.SUCCESS_DISTANCE
+                self._previous_action
+                == SIM_NAME_TO_ACTION[SimulatorActions.STOP.value]
+                and self._distance_target() < self._config_env.SUCCESS_DISTANCE
         ):
             return True
         return False
@@ -132,10 +133,10 @@ def construct_envs(args):
 
         if len(scenes) > 0:
             config_env.DATASET.POINTNAVV1.CONTENT_SCENES = scenes[
-                i * scene_split_size : (i + 1) * scene_split_size
-            ]
+                                                           i * scene_split_size: (i + 1) * scene_split_size
+                                                           ]
             config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID = int(
-                config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID.split(",")[i % len(config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID.split())])
+                args.sim_gpu_id[i % len(args.sim_gpu_id)])
 
         # config_env.SIMULATOR.HABITAT_SIM_V0.GPU_DEVICE_ID = args.sim_gpu_id
 
@@ -189,8 +190,17 @@ def main():
     )
     actor_critic.to(device)
 
+    if args.use_icm:
+        icm = ICMModel(observation_space=envs.observation_spaces[0],
+                       action_space=envs.action_spaces[0],
+                       use_cuda=True)
+        print('-------------------- Using ICM! ---------------------')
+    else:
+        icm = None
+
     agent = PPO(
         actor_critic,
+        icm,
         args.clip_param,
         args.ppo_epoch,
         args.num_mini_batch,
@@ -207,16 +217,21 @@ def main():
         )
     )
 
+    if args.model_path is not None:
+        agent.load_state_dict(torch.load(args.model_path))
+        print('Model {0} loaded!'.format(args.model_path))
+
     observations = envs.reset()
 
     batch = batch_obs(observations)
 
     rollouts = RolloutStorage(
-        args.num_steps,
-        envs.num_envs,
-        envs.observation_spaces[0],
-        envs.action_spaces[0],
-        args.hidden_size,
+        num_steps=args.num_steps,
+        num_envs=envs.num_envs,
+        observation_space=envs.observation_spaces[0],
+        action_space=envs.action_spaces[0],
+        recurrent_hidden_state_size=args.hidden_size,
+        curiosity=args.use_icm
     )
     for sensor in rollouts.observations:
         rollouts.observations[sensor][0].copy_(batch[sensor])
@@ -227,6 +242,10 @@ def main():
     current_episode_reward = torch.zeros(envs.num_envs, 1)
     window_episode_reward = deque()
     window_episode_counts = deque()
+
+    episode_int_rewards = torch.zeros(envs.num_envs, 1)
+    current_episode_int_reward = torch.zeros(envs.num_envs, 1)
+    window_episode_int_reward = deque()
 
     t_start = time()
     env_time = 0
@@ -261,6 +280,8 @@ def main():
                     rollouts.masks[step],
                 )
             pth_time += time() - t_sample_action
+            print('step_observation.keys(): ', step_observation.keys())
+            states = np.stack(step_observation)
 
             t_step_env = time()
 
@@ -273,6 +294,14 @@ def main():
 
             t_update_stats = time()
             batch = batch_obs(observations)
+
+            next_states = np.stack(observations)
+            intrinsic_reward = agent.compute_intrinsic_reward(
+                states,
+                next_states,
+                actions)
+            states = next_states
+
             rewards = torch.tensor(rewards, dtype=torch.float)
             rewards = rewards.unsqueeze(1)
 
@@ -280,19 +309,27 @@ def main():
                 [[0.0] if done else [1.0] for done in dones], dtype=torch.float
             )
 
+            print('observations.shape: ', observations.shape)
+
+            # current_episode_reward += rewards
             current_episode_reward += rewards
             episode_rewards += (1 - masks) * current_episode_reward
             episode_counts += 1 - masks
             current_episode_reward *= masks
 
+            current_episode_int_reward += intrinsic_reward
+            episode_int_rewards += (1 - masks) * current_episode_int_reward
+            current_episode_int_reward *= masks
+
             rollouts.insert(
-                batch,
-                recurrent_hidden_states,
-                actions,
-                actions_log_probs,
-                values,
-                rewards,
-                masks,
+                observations=batch,
+                recurrent_hidden_states=recurrent_hidden_states,
+                actions=actions,
+                action_log_probs=actions_log_probs,
+                value_preds=values,
+                rewards=rewards,
+                masks=masks,
+                intrinsic_reward=intrinsic_reward,
             )
 
             count_steps += envs.num_envs
@@ -301,7 +338,9 @@ def main():
         if len(window_episode_reward) == args.reward_window_size:
             window_episode_reward.popleft()
             window_episode_counts.popleft()
+            window_episode_int_reward.popleft()
         window_episode_reward.append(episode_rewards.clone())
+        window_episode_int_reward.append(episode_int_rewards.clone())
         window_episode_counts.append(episode_counts.clone())
 
         t_update_model = time()
@@ -338,20 +377,25 @@ def main():
             )
 
             window_rewards = (
-                window_episode_reward[-1] - window_episode_reward[0]
+                    window_episode_reward[-1] - window_episode_reward[0]
+            ).sum()
+            window_int_rewards = (
+                    window_episode_int_reward[-1] - window_episode_int_reward[0]
             ).sum()
             window_counts = (
-                window_episode_counts[-1] - window_episode_counts[0]
+                    window_episode_counts[-1] - window_episode_counts[0]
             ).sum()
 
             if window_counts > 0:
                 logger.info(
-                    "Average window size {} reward: {:3f}".format(
+                    "Average window size {} ext_reward: {:3f} int_reward: {:3f}".format(
                         len(window_episode_reward),
                         (window_rewards / window_counts).item(),
+                        (window_int_rewards / window_counts).item(),
                     )
                 )
-                writer.add_scalar('data/rewards', (window_rewards / window_counts).item(), update)
+                writer.add_scalar('data/ext_rewards', (window_rewards / window_counts).item(), update)
+                writer.add_scalar('data/int_rewards', (window_int_rewards / window_counts).item(), update)
             else:
                 logger.info("No episodes finish in current window")
 
@@ -369,6 +413,7 @@ def main():
 
     writer.export_scalars_to_json("./all_scalars.json")
     writer.close()
+
 
 if __name__ == "__main__":
     main()

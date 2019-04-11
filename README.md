@@ -4,8 +4,16 @@
 
 --------------------------------------------------------------------------------
 ## How to Run
+
+### Folder explaination
+```
+ppo_baseline_v0.01: stable version v0.01
+ppo_baseline: dev version v0.02
+    evaluate_ppo_vis_single_env.py: add visualization of V-saliency
+```
 ### Development
 ```
+docker login --username=$USERNAME$ registry.sensetime.com
 docker pull registry.sensetime.com/habitat/jack/habitat:v0.03
 docker tag registry.sensetime.com/habitat/jack/habitat:v0.03 jack/habitat:v0.03 
 cd ppo_baseline
@@ -14,6 +22,7 @@ bash run_habitat_docker.sh
 # Inside the habitat docker container
 conda activate habitat
 cd /habitat-baseline
+ln -s /habitat-api/data/ .
 bash train_ppo.sh 
 bash evaluate_ppo.sh
 ```
