@@ -8,6 +8,7 @@ python -u evaluate_ppo_vis_single_env.py \
 
 #python -u evaluate_ppo_vis_single_env.py \
 #    --model-path "../models/checkpoints_mp3d/ckpt.849.pth" \
+#    --sim-gpu-id 0 \
 #    --pth-gpu-id 0 \
 #    --num-processes 1 \
 #    --count-test-episodes 495 \
