@@ -386,14 +386,12 @@ def ppo_args():
         required=True,
         help="folder for storing checkpoints",
     )
-    parser.add_argument(
-        "--sim-gpu-id",
-        nargs='+',
-        type=int,
-        required=True,
-        default=[],
-        help="gpu id on which scenes are loaded",
-    )
+    # parser.add_argument(
+    #     "--sim-gpu-id",
+    #     type=int,
+    #     required=True,
+    #     help="gpu id on which scenes are loaded",
+    # )
     parser.add_argument(
         "--pth-gpu-id",
         type=int,
@@ -405,6 +403,14 @@ def ppo_args():
         type=int,
         default=10000,
         help="number of PPO updates to run",
+    )
+    parser.add_argument(
+        "--sim-gpu-id",
+        nargs='+',
+        type=int,
+        required=True,
+        default=[],
+        help="gpu id on which scenes are loaded",
     )
     # parser.add_argument(
     #     "--sensors",
