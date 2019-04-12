@@ -23,10 +23,12 @@ class PPO(nn.Module):
         num_mini_batch,
         value_loss_coef,
         entropy_coef,
+        device=None,
         lr=None,
         eps=None,
         max_grad_norm=None,
         use_clipped_value_loss=True,
+        eta=0.01
     ):
 
         super().__init__()
@@ -45,7 +47,12 @@ class PPO(nn.Module):
 
         self.icm = icm_model
 
-        self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+        self.device = device
+        self.eta = eta
+        if icm_model is None:
+            self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
+        else:
+            self.optimizer = optim.Adam(list(actor_critic.parameters()) + list(icm_model.parameters()), lr=lr, eps=eps)
 
     def forward(self, *x):
         raise NotImplementedError
@@ -141,18 +148,23 @@ class PPO(nn.Module):
         return value_loss_epoch, action_loss_epoch, dist_entropy_epoch
 
     def compute_intrinsic_reward(self, state, next_state, action):
-        state = torch.FloatTensor(state).to(self.device)
-        next_state = torch.FloatTensor(next_state).to(self.device)
-        action = torch.LongTensor(action).to(self.device)
+        '''
+
+        :param state:
+        :param next_state:
+        :param action: shape: (2,1)
+        :return:
+        '''
+        state = state.permute(0, 3, 1, 2).to(device=self.device)
+        next_state = next_state.permute(0, 3, 1, 2).to(device=self.device)
 
         action_onehot = torch.FloatTensor(
-            len(action), self.output_size).to(
-            self.device)
+            len(action), self.icm.output_size).to(device=self.device)
         action_onehot.zero_()
         action_onehot.scatter_(1, action.view(len(action), -1), 1)
 
         real_next_state_feature, pred_next_state_feature, pred_action = self.icm(
             [state, next_state, action_onehot])
-        intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1)
-        return intrinsic_reward.data.cpu().numpy()
+        intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='mean')
+        return intrinsic_reward.cpu()
 

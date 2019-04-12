@@ -109,6 +109,7 @@ class RolloutStorage:
 
         self.recurrent_hidden_states = self.recurrent_hidden_states.to(device)
         self.rewards = self.rewards.to(device)
+        self.intrinsic_reward = self.intrinsic_reward.to(device)
         self.value_preds = self.value_preds.to(device)
         self.returns = self.returns.to(device)
         self.action_log_probs = self.action_log_probs.to(device)
@@ -439,7 +440,12 @@ def ppo_args():
         default=None,
         help="path to pretrained model",
     )
-
+    parser.add_argument(
+        "--eta",
+        type=float,
+        default=1.,
+        help="internal reward coefficient",
+    )
     parser.add_argument("--seed", type=int, default=100)
 
     return parser

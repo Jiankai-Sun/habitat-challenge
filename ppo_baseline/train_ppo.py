@@ -193,7 +193,8 @@ def main():
     if args.use_icm:
         icm = ICMModel(observation_space=envs.observation_spaces[0],
                        action_space=envs.action_spaces[0],
-                       use_cuda=True)
+                       device=device)
+        icm.to(device)
         print('-------------------- Using ICM! ---------------------')
     else:
         icm = None
@@ -206,9 +207,11 @@ def main():
         args.num_mini_batch,
         args.value_loss_coef,
         args.entropy_coef,
+        eta=args.eta,
         lr=args.lr,
         eps=args.eps,
         max_grad_norm=args.max_grad_norm,
+        device=device
     )
 
     logger.info(
@@ -280,8 +283,8 @@ def main():
                     rollouts.masks[step],
                 )
             pth_time += time() - t_sample_action
-            print('step_observation.keys(): ', step_observation.keys())
-            states = np.stack(step_observation)
+            print('step_observation.shape: ', step_observation['rgb'].shape)
+            states = step_observation['rgb'].detach()  # shape (2, 256, 256, 3)
 
             t_step_env = time()
 
@@ -294,13 +297,14 @@ def main():
 
             t_update_stats = time()
             batch = batch_obs(observations)
-
-            next_states = np.stack(observations)
+            next_states = batch['rgb'].detach()
+            print('next_states.shape: ', next_states.shape)
             intrinsic_reward = agent.compute_intrinsic_reward(
                 states,
                 next_states,
-                actions)
-            states = next_states
+                actions
+            )
+            # states = next_states
 
             rewards = torch.tensor(rewards, dtype=torch.float)
             rewards = rewards.unsqueeze(1)
@@ -309,13 +313,13 @@ def main():
                 [[0.0] if done else [1.0] for done in dones], dtype=torch.float
             )
 
-            print('observations.shape: ', observations.shape)
-
-            # current_episode_reward += rewards
+            print('rewards: ', rewards)
             current_episode_reward += rewards
             episode_rewards += (1 - masks) * current_episode_reward
             episode_counts += 1 - masks
             current_episode_reward *= masks
+
+            print('current_episode_int_reward.shape, intrinsic_reward.shape: ', current_episode_int_reward.shape, intrinsic_reward.shape)
 
             current_episode_int_reward += intrinsic_reward
             episode_int_rewards += (1 - masks) * current_episode_int_reward

@@ -268,14 +268,23 @@ class Net(nn.Module):
 
 
 class ICMModel(nn.Module):
-    def __init__(self, observation_space, action_space, use_cuda=True):
+    def __init__(self, observation_space, action_space, device):
         super(ICMModel, self).__init__()
 
-        self.input_size = observation_space
-        self.output_size = action_space
-        self.device = torch.device('cuda' if use_cuda else 'cpu')
+        if "rgb" in observation_space.spaces:
+            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
+        else:
+            self._n_input_rgb = 0
+        if "depth" in observation_space.spaces:
+            self._n_input_depth = observation_space.spaces["depth"].shape[2]
+        else:
+            self._n_input_depth = 0
 
-        feature_output = 7 * 7 * 64
+        self.input_size = self._n_input_rgb + self._n_input_depth
+        self.output_size = action_space.n
+
+        # feature_output = 7 * 7 * 64
+        feature_output = 28 * 28 * 64
         self.feature = nn.Sequential(
             nn.Conv2d(
                 in_channels=3,
@@ -302,21 +311,21 @@ class ICMModel(nn.Module):
         self.inverse_net = nn.Sequential(
             nn.Linear(512 * 2, 512),
             nn.ReLU(),
-            nn.Linear(512, action_space)
+            nn.Linear(512, self.output_size)
         )
 
         self.residual = [nn.Sequential(
-            nn.Linear(action_space + 512, 512),
+            nn.Linear(self.output_size + 512, 512),
             nn.LeakyReLU(),
             nn.Linear(512, 512),
-        ).to(self.device)] * 8
+        ).to(device=device)] * 8
 
         self.forward_net_1 = nn.Sequential(
-            nn.Linear(action_space + 512, 512),
+            nn.Linear(self.output_size + 512, 512),
             nn.LeakyReLU()
         )
         self.forward_net_2 = nn.Sequential(
-            nn.Linear(action_space + 512, 512),
+            nn.Linear(self.output_size + 512, 512),
         )
 
         for p in self.modules():
