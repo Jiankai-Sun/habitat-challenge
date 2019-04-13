@@ -211,6 +211,7 @@ def main():
         args.value_loss_coef,
         args.entropy_coef,
         beta=args.beta,
+        prediction_lr_scale=args.prediction_lr_scale,
         eta=args.eta,
         lr=args.lr,
         eps=args.eps,
@@ -409,11 +410,11 @@ def main():
                 )
                 writer.add_scalar('data/ext_rewards', (window_rewards / window_counts).item(), update)
                 writer.add_scalar('data/int_rewards', (window_int_rewards / window_counts).item(), update)
-                writer.add_scalar('data/value_loss', value_loss.item(), update)
-                writer.add_scalar('data/action_loss', action_loss.item(), update)
-                writer.add_scalar('data/dist_entropy', dist_entropy.item(), update)
-                writer.add_scalar('data/inverse_loss', inverse_loss.item(), update)
-                writer.add_scalar('data/forward_loss', forward_loss.item(), update)
+                writer.add_scalar('data/value_loss', value_loss, update)
+                writer.add_scalar('data/action_loss', action_loss, update)
+                writer.add_scalar('data/dist_entropy', dist_entropy, update)
+                writer.add_scalar('data/inverse_loss', inverse_loss, update)
+                writer.add_scalar('data/forward_loss', forward_loss, update)
             else:
                 logger.info("No episodes finish in current window")
 

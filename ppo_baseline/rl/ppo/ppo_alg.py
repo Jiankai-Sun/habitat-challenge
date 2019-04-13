@@ -24,6 +24,7 @@ class PPO(nn.Module):
         value_loss_coef,
         entropy_coef,
         beta,
+        prediction_lr_scale,
         device=None,
         lr=None,
         eps=None,
@@ -51,6 +52,7 @@ class PPO(nn.Module):
         self.device = device
         self.eta = eta
         self.beta = beta
+        self.prediction_lr_scale = prediction_lr_scale
         if self.icm_model is None:
             self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
         else:
@@ -103,9 +105,9 @@ class PPO(nn.Module):
                     real_next_state_feature, pred_next_state_feature, pred_action = self.icm_model(
                         [obs_batch['rgb'].permute(0, 3, 1, 2).to(self.device), next_obs_batch['rgb'].permute(0, 3, 1, 2).to(self.device), action_onehot])
 
-                    inverse_loss = 0.1 * self.ce(pred_action, actions_batch.squeeze())
+                    inverse_loss = (1 - self.beta) * self.ce(pred_action, actions_batch.squeeze())
 
-                    forward_loss = 1e-2 * self.forward_mse(
+                    forward_loss = self.beta * self.forward_mse(
                         pred_next_state_feature, real_next_state_feature.detach())
                 # ---------------------------------------------------------------------------------
 
@@ -157,13 +159,12 @@ class PPO(nn.Module):
                         - dist_entropy * self.entropy_coef
                     ).backward()
                 else:
-                    # print(value_loss * self.value_loss_coef, action_loss, dist_entropy * self.entropy_coef, 1e-2 * forward_loss, 0.1 * inverse_loss)
+                    # print(value_loss * self.value_loss_coef, action_loss, dist_entropy * self.entropy_coef, forward_loss, inverse_loss, (inverse_loss + forward_loss) * self.prediction_lr_scale)
                     (
                         value_loss * self.value_loss_coef
                         + action_loss
                         - dist_entropy * self.entropy_coef
-                        + inverse_loss
-                        + forward_loss
+                        + (inverse_loss + forward_loss) * self.prediction_lr_scale
                     ).backward()
                 nn.utils.clip_grad_norm_(
                     self.actor_critic.parameters(), self.max_grad_norm

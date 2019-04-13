@@ -479,7 +479,13 @@ def ppo_args():
     parser.add_argument(
         "--beta",
         type=float,
-        default=0.2,
+        default=0.1,
+        help="FORWARD_LOSS weight should be between [0,1] (default: 0.2)",
+    )
+    parser.add_argument(
+        "--prediction_lr_scale",
+        type=float,
+        default=0.01,
         help="FORWARD_LOSS weight should be between [0,1] (default: 0.2)",
     )
     parser.add_argument("--seed", type=int, default=100)
