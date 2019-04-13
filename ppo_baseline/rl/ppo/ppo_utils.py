@@ -78,6 +78,15 @@ class RolloutStorage:
                 *observation_space.spaces[sensor].shape
             )
 
+        self.next_observations = {}
+
+        for sensor in observation_space.spaces:
+            self.next_observations[sensor] = torch.zeros(
+                num_steps + 1,
+                num_envs,
+                *observation_space.spaces[sensor].shape
+            )
+
         self.recurrent_hidden_states = torch.zeros(
             num_steps + 1, num_envs, recurrent_hidden_state_size
         )
@@ -119,6 +128,7 @@ class RolloutStorage:
     def insert(
         self,
         observations,
+        next_observations,
         recurrent_hidden_states,
         actions,
         action_log_probs,
@@ -130,6 +140,10 @@ class RolloutStorage:
         for sensor in observations:
             self.observations[sensor][self.step + 1].copy_(
                 observations[sensor]
+            )
+        for sensor in next_observations:
+            self.next_observations[sensor][self.step + 1].copy_(
+                next_observations[sensor]
             )
         self.recurrent_hidden_states[self.step + 1].copy_(
             recurrent_hidden_states
@@ -184,7 +198,7 @@ class RolloutStorage:
         perm = torch.randperm(num_processes)
         for start_ind in range(0, num_processes, num_envs_per_batch):
             observations_batch = defaultdict(list)
-
+            next_observations_batch = defaultdict(list)
             recurrent_hidden_states_batch = []
             actions_batch = []
             value_preds_batch = []
@@ -199,6 +213,11 @@ class RolloutStorage:
                 for sensor in self.observations:
                     observations_batch[sensor].append(
                         self.observations[sensor][:-1, ind]
+                    )
+
+                for sensor in self.next_observations:
+                    next_observations_batch[sensor].append(
+                        self.next_observations[sensor][:-1, ind]
                     )
 
                 recurrent_hidden_states_batch.append(
@@ -223,6 +242,11 @@ class RolloutStorage:
                     observations_batch[sensor], 1
                 )
 
+            for sensor in next_observations_batch:
+                next_observations_batch[sensor] = torch.stack(
+                    next_observations_batch[sensor], 1
+                )
+
             actions_batch = torch.stack(actions_batch, 1)
             value_preds_batch = torch.stack(value_preds_batch, 1)
             return_batch = torch.stack(return_batch, 1)
@@ -243,6 +267,11 @@ class RolloutStorage:
                     T, N, observations_batch[sensor]
                 )
 
+            for sensor in next_observations_batch:
+                next_observations_batch[sensor] = _flatten_helper(
+                    T, N, next_observations_batch[sensor]
+                )
+
             actions_batch = _flatten_helper(T, N, actions_batch)
             value_preds_batch = _flatten_helper(T, N, value_preds_batch)
             return_batch = _flatten_helper(T, N, return_batch)
@@ -254,6 +283,7 @@ class RolloutStorage:
 
             yield (
                 observations_batch,
+                next_observations_batch,
                 recurrent_hidden_states_batch,
                 actions_batch,
                 value_preds_batch,
@@ -445,6 +475,12 @@ def ppo_args():
         type=float,
         default=1e-6,
         help="internal reward coefficient (default: 1.)",
+    )
+    parser.add_argument(
+        "--beta",
+        type=float,
+        default=0.2,
+        help="FORWARD_LOSS weight should be between [0,1] (default: 0.2)",
     )
     parser.add_argument("--seed", type=int, default=100)
 

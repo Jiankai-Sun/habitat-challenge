@@ -210,6 +210,7 @@ def main():
         args.num_mini_batch,
         args.value_loss_coef,
         args.entropy_coef,
+        beta=args.beta,
         eta=args.eta,
         lr=args.lr,
         eps=args.eps,
@@ -334,6 +335,7 @@ def main():
 
             rollouts.insert(
                 observations=batch,
+                next_observations=step_observation,  # TODO:
                 recurrent_hidden_states=recurrent_hidden_states,
                 actions=actions,
                 action_log_probs=actions_log_probs,
@@ -369,7 +371,7 @@ def main():
             next_value, args.use_gae, args.gamma, args.tau
         )
 
-        value_loss, action_loss, dist_entropy = agent.update(rollouts)
+        value_loss, action_loss, dist_entropy, inverse_loss, forward_loss = agent.update(rollouts)
 
         rollouts.after_update()
         pth_time += time() - t_update_model
@@ -407,6 +409,11 @@ def main():
                 )
                 writer.add_scalar('data/ext_rewards', (window_rewards / window_counts).item(), update)
                 writer.add_scalar('data/int_rewards', (window_int_rewards / window_counts).item(), update)
+                writer.add_scalar('data/value_loss', value_loss.item(), update)
+                writer.add_scalar('data/action_loss', action_loss.item(), update)
+                writer.add_scalar('data/dist_entropy', dist_entropy.item(), update)
+                writer.add_scalar('data/inverse_loss', inverse_loss.item(), update)
+                writer.add_scalar('data/forward_loss', forward_loss.item(), update)
             else:
                 logger.info("No episodes finish in current window")
 

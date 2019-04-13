@@ -23,6 +23,7 @@ class PPO(nn.Module):
         num_mini_batch,
         value_loss_coef,
         entropy_coef,
+        beta,
         device=None,
         lr=None,
         eps=None,
@@ -45,14 +46,18 @@ class PPO(nn.Module):
         self.max_grad_norm = max_grad_norm
         self.use_clipped_value_loss = use_clipped_value_loss
 
-        self.icm = icm_model
+        self.icm_model = icm_model
 
         self.device = device
         self.eta = eta
-        if icm_model is None:
+        self.beta = beta
+        if self.icm_model is None:
             self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
         else:
             self.optimizer = optim.Adam(list(actor_critic.parameters()) + list(icm_model.parameters()), lr=lr, eps=eps)
+            self.ce = nn.CrossEntropyLoss()
+            self.forward_mse = nn.MSELoss()
+
             # self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
 
     def forward(self, *x):
@@ -67,6 +72,8 @@ class PPO(nn.Module):
         value_loss_epoch = 0
         action_loss_epoch = 0
         dist_entropy_epoch = 0
+        inverse_loss_epoch = 0
+        forward_loss_epoch = 0
 
         for e in range(self.ppo_epoch):
             data_generator = rollouts.recurrent_generator(
@@ -76,6 +83,7 @@ class PPO(nn.Module):
             for sample in data_generator:
                 (
                     obs_batch,
+                    next_obs_batch,
                     recurrent_hidden_states_batch,
                     actions_batch,
                     value_preds_batch,
@@ -84,6 +92,22 @@ class PPO(nn.Module):
                     old_action_log_probs_batch,
                     adv_targ,
                 ) = sample
+
+                # --------------------------------------------------------------------------------
+                # for Curiosity-driven
+                if self.icm_model is not None:
+                    # print('actions_batch.shape[0]: ', actions_batch.shape[0]) # 128
+                    action_onehot = torch.FloatTensor(actions_batch.shape[0], self.icm_model.output_size).to(self.device)
+                    action_onehot.zero_()
+                    action_onehot.scatter_(1, actions_batch.view(-1, 1), 1)
+                    real_next_state_feature, pred_next_state_feature, pred_action = self.icm_model(
+                        [obs_batch['rgb'].permute(0, 3, 1, 2).to(self.device), next_obs_batch['rgb'].permute(0, 3, 1, 2).to(self.device), action_onehot])
+
+                    inverse_loss = 0.1 * self.ce(pred_action, actions_batch.squeeze())
+
+                    forward_loss = 1e-2 * self.forward_mse(
+                        pred_next_state_feature, real_next_state_feature.detach())
+                # ---------------------------------------------------------------------------------
 
                 # Reshape to do in a single forward pass for all steps
                 (
@@ -126,11 +150,21 @@ class PPO(nn.Module):
                     value_loss = 0.5 * (return_batch - values).pow(2).mean()
 
                 self.optimizer.zero_grad()
-                (
-                    value_loss * self.value_loss_coef
-                    + action_loss
-                    - dist_entropy * self.entropy_coef
-                ).backward()
+                if self.icm_model is None:
+                    (
+                        value_loss * self.value_loss_coef
+                        + action_loss
+                        - dist_entropy * self.entropy_coef
+                    ).backward()
+                else:
+                    # print(value_loss * self.value_loss_coef, action_loss, dist_entropy * self.entropy_coef, 1e-2 * forward_loss, 0.1 * inverse_loss)
+                    (
+                        value_loss * self.value_loss_coef
+                        + action_loss
+                        - dist_entropy * self.entropy_coef
+                        + inverse_loss
+                        + forward_loss
+                    ).backward()
                 nn.utils.clip_grad_norm_(
                     self.actor_critic.parameters(), self.max_grad_norm
                 )
@@ -139,14 +173,18 @@ class PPO(nn.Module):
                 value_loss_epoch += value_loss.item()
                 action_loss_epoch += action_loss.item()
                 dist_entropy_epoch += dist_entropy.item()
+                inverse_loss_epoch += inverse_loss.item()
+                forward_loss_epoch += forward_loss.item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 
         value_loss_epoch /= num_updates
         action_loss_epoch /= num_updates
         dist_entropy_epoch /= num_updates
+        inverse_loss_epoch /= num_updates
+        forward_loss_epoch /= num_updates
 
-        return value_loss_epoch, action_loss_epoch, dist_entropy_epoch
+        return value_loss_epoch, action_loss_epoch, dist_entropy_epoch, inverse_loss_epoch, forward_loss_epoch
 
     def compute_intrinsic_reward(self, state, next_state, action):
         '''
@@ -164,11 +202,11 @@ class PPO(nn.Module):
         action = torch.LongTensor(action).to(self.device)
 
         action_onehot = torch.FloatTensor(
-            len(action), self.icm.output_size).to(device=self.device)
+            len(action), self.icm_model.output_size).to(device=self.device)
         action_onehot.zero_()
         action_onehot.scatter_(1, action.view(len(action), -1), 1)
 
-        real_next_state_feature, pred_next_state_feature, pred_action = self.icm(
+        real_next_state_feature, pred_next_state_feature, pred_action = self.icm_model(
             [state, next_state, action_onehot])
         intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1, keepdim=True)
         return intrinsic_reward.data.cpu().numpy()
