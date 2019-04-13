@@ -37,6 +37,9 @@ evalai push rgbd_submission:latest --phase habitat19-rgb-val
 # habitat19-{rgb, rgbd}-{val, test-std, test-ch}
 ```
 
+### Tools
+`ppo_baseline/simple_agent.py`: Compute mean/std of dataset:
+
 # Habitat-Challenge
 
 This repository contains starter code for the challenge and details of task, training and evaluation. For an overview of habitat-challenge visit [aihabitat.org/challenge](https://aihabitat.org/challenge).
