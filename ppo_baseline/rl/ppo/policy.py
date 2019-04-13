@@ -339,9 +339,8 @@ class ICMModel(nn.Module):
 
     def forward(self, inputs):
         state, next_state, action = inputs
-
-        encode_state = self.feature(state)
-        encode_next_state = self.feature(next_state)
+        encode_state = self.feature(state / 255.0)
+        encode_next_state = self.feature(next_state / 255.0)
         # get pred action
         pred_action = torch.cat((encode_state, encode_next_state), 1)
         pred_action = self.inverse_net(pred_action)
