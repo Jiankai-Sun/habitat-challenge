@@ -149,7 +149,7 @@ def main():
 
     config_env = get_config(config_file=args.task_config)
     config_env.defrost()
-    config_env.DATASET.SPLIT = "val"
+    print('config_env.DATASET.SPLIT: ', config_env.DATASET.SPLIT)
     config_baseline = cfg_baseline()
     envs = make_env_fn(config_env, config_baseline, 0)  # habitat.Env(env_configs)
 
@@ -206,7 +206,7 @@ def main():
         rgb_std = np.array(observations_dict['rgb']).std(axis=(0, 1, 2)) / 255
         depth_mean = np.array(observations_dict['depth']).mean(axis=(0, 1, 2)) / 255
         depth_std = np.array(observations_dict['depth']).std(axis=(0, 1, 2)) / 255
-        # print('rgb_mean: {0}, rgb_std: {1}, depth_mean: {2}, depth_std: {3}'.format(rgb_mean.shape, rgb_std.shape, depth_mean.shape, depth_std.shape))
+        print('rgb_mean: {0}, rgb_std: {1}, depth_mean: {2}, depth_std: {3}'.format(rgb_mean, rgb_std, depth_mean, depth_std))
         np.save('mean_std.npy', [rgb_mean, rgb_std, depth_mean, depth_std])
 
         '''
