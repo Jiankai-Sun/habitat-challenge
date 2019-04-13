@@ -23,6 +23,7 @@ import cv2
 import os
 import subprocess
 import shutil
+# import matplotlib.pyplot as plt
 
 
 def visualize_traj(env, traj_coors, pointgoal, output_file):
@@ -245,10 +246,15 @@ def main():
 
             outputs = envs.step(actions.item())
 
-            gradient = torch.autograd.grad(outputs=value, inputs=batch['rgb'],  #.cuda(),
+            # gradient = torch.autograd.grad(outputs=value, inputs=batch['depth'],  #.cuda(),
+            #                             create_graph=False, retain_graph=False, only_inputs=True)[0]
+            gradient = torch.autograd.grad(outputs=value, inputs=batch['depth'],  #.cuda(),
                                         create_graph=False, retain_graph=False, only_inputs=True)[0]
 
             value_saliency = abs(gradient[0].detach().cpu().numpy())
+            # # Visualize the distribution of value_saliency
+            # plt.hist(value_saliency.reshape(-1), normed=True, bins=30)
+            # plt.show()
             value_saliency = value_saliency / (value_saliency.max() + 1e-10) * 255
 
             # mat = np.array(cv2.resize(observations[0]['rgb'], (480, 360)))
@@ -264,7 +270,7 @@ def main():
             if 'rgb' in batch.keys() and not 'depth' in batch.keys():
                 frame = np.concatenate((observations[0]['rgb'], value_saliency), axis=1)
             elif 'rgb' in batch.keys() and 'depth' in batch.keys():
-                frame = np.concatenate((observations[0]['rgb'], (observations[0]['depth'] * 255).repeat([3], axis=2), value_saliency), axis=1)
+                frame = np.concatenate((observations[0]['rgb'], (observations[0]['depth'] * 255).repeat([3], axis=2), value_saliency.repeat([3], axis=2)), axis=1)
             else:
                 raise NotImplementedError('Unsupported mode to save in observations')
 

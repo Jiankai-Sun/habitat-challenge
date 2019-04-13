@@ -53,6 +53,7 @@ class PPO(nn.Module):
             self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
         else:
             self.optimizer = optim.Adam(list(actor_critic.parameters()) + list(icm_model.parameters()), lr=lr, eps=eps)
+            # self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
 
     def forward(self, *x):
         raise NotImplementedError
@@ -155,8 +156,12 @@ class PPO(nn.Module):
         :param action: shape: (2,1)
         :return:
         '''
-        state = state.permute(0, 3, 1, 2).to(device=self.device)
-        next_state = next_state.permute(0, 3, 1, 2).to(device=self.device)
+        # state = state.permute(0, 3, 1, 2)
+        # next_state = next_state.permute(0, 3, 1, 2)
+
+        state = torch.FloatTensor(state).permute(0, 3, 1, 2).to(self.device)
+        next_state = torch.FloatTensor(next_state).permute(0, 3, 1, 2).to(self.device)
+        action = torch.LongTensor(action).to(self.device)
 
         action_onehot = torch.FloatTensor(
             len(action), self.icm.output_size).to(device=self.device)
@@ -165,6 +170,6 @@ class PPO(nn.Module):
 
         real_next_state_feature, pred_next_state_feature, pred_action = self.icm(
             [state, next_state, action_onehot])
-        intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='mean')
-        return intrinsic_reward.cpu()
+        intrinsic_reward = self.eta * F.mse_loss(real_next_state_feature, pred_next_state_feature, reduction='none').mean(-1, keepdim=True)
+        return intrinsic_reward.data.cpu().numpy()
 

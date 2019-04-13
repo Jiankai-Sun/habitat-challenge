@@ -53,8 +53,8 @@ fi
 python -u train_ppo.py \
     --use-gae \
     --use-icm \
-    --sim-gpu-id 0 \
-    --pth-gpu-id 1 \
+    --sim-gpu-id 2 \
+    --pth-gpu-id 3 \
     --lr 2.5e-4 \
     --clip-param 0.1 \
     --value-loss-coef 0.5 \
@@ -65,7 +65,7 @@ python -u train_ppo.py \
     --use-linear-lr-decay \
     --use-linear-clip-decay \
     --entropy-coef 0.01 \
-    --tb-log-dir "data/tb_log/tb_gibson_log_curiosity" \
+    --tb-log-dir "data/tb_log/tb_gibson_curiosity_log" \
     --log-file "data/train_gibson_curiosity.log" \
     --log-interval 5 \
     --checkpoint-folder "data/checkpoints_gibson_curiosity" \

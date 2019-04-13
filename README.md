@@ -8,8 +8,8 @@
 ### Folder explaination
 ```
 ppo_baseline_v0.01: stable version v0.01
-ppo_baseline: dev version v0.02
-    evaluate_ppo_vis_single_env.py: add visualization of V-saliency
+ppo_baseline: dev version v0.02 (curiosity)
+evaluate_ppo_vis_single_env.py: add visualization of V-saliency (depth v-saliency, rgb v-saliency)
 ```
 ### Development
 ```

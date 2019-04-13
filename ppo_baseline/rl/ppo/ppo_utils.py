@@ -67,7 +67,7 @@ class RolloutStorage:
         observation_space,
         action_space,
         recurrent_hidden_state_size,
-        curiosity=False
+        use_icm=False
     ):
         self.observations = {}
 
@@ -101,7 +101,7 @@ class RolloutStorage:
 
         self.num_steps = num_steps
         self.step = 0
-        self.curiosity = curiosity
+        self.use_icm = use_icm
 
     def to(self, device):
         for sensor in self.observations:
@@ -151,8 +151,8 @@ class RolloutStorage:
         self.masks[0].copy_(self.masks[-1])
 
     def compute_returns(self, next_value, use_gae, gamma, tau):
-        if self.curiosity:
-            self.rewards += self.intrinsic_reward
+        if self.use_icm:
+            self.rewards += self.intrinsic_reward  # (len(self.rewards): 128)
 
         if use_gae:
             self.value_preds[-1] = next_value
@@ -443,8 +443,8 @@ def ppo_args():
     parser.add_argument(
         "--eta",
         type=float,
-        default=1.,
-        help="internal reward coefficient",
+        default=1e-6,
+        help="internal reward coefficient (default: 1.)",
     )
     parser.add_argument("--seed", type=int, default=100)
 

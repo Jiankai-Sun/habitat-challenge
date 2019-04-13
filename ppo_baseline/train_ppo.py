@@ -23,6 +23,8 @@ from rl.ppo.ppo_alg import PPO
 from rl.ppo.ppo_utils import update_linear_schedule, ppo_args, batch_obs, RolloutStorage
 from tensorboardX import SummaryWriter
 
+# import cv2
+
 
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
@@ -165,6 +167,7 @@ def construct_envs(args):
 
 
 def main():
+
     parser = ppo_args()
     args = parser.parse_args()
 
@@ -234,7 +237,7 @@ def main():
         observation_space=envs.observation_spaces[0],
         action_space=envs.action_spaces[0],
         recurrent_hidden_state_size=args.hidden_size,
-        curiosity=args.use_icm
+        use_icm=args.use_icm
     )
     for sensor in rollouts.observations:
         rollouts.observations[sensor][0].copy_(batch[sensor])
@@ -283,8 +286,8 @@ def main():
                     rollouts.masks[step],
                 )
             pth_time += time() - t_sample_action
-            print('step_observation.shape: ', step_observation['rgb'].shape)
-            states = step_observation['rgb'].detach()  # shape (2, 256, 256, 3)
+            # print('step_observation.shape: ', step_observation['rgb'].shape)
+            # states = step_observation['rgb'].detach()  # shape (2, 256, 256, 3)
 
             t_step_env = time()
 
@@ -297,14 +300,18 @@ def main():
 
             t_update_stats = time()
             batch = batch_obs(observations)
-            next_states = batch['rgb'].detach()
-            print('next_states.shape: ', next_states.shape)
+            # next_states =   # shape (2, 256, 256, 3)
+            # print('next_states.shape: ', next_states.shape)
+            # img = np.concatenate((step_observation['rgb'][0].cpu().numpy(), batch['rgb'][0].cpu().numpy(), step_observation['rgb'][0].cpu().numpy() - batch['rgb'][0].cpu().numpy()), axis=1)
+            # cv2.imwrite('data/log/{0:06d}.png'.format(step), img)
+
             intrinsic_reward = agent.compute_intrinsic_reward(
-                states,
-                next_states,
-                actions
+                step_observation['rgb'].cpu().numpy(),
+                batch['rgb'].cpu().numpy(),
+                actions.cpu().numpy()
             )
             # states = next_states
+            intrinsic_reward = torch.tensor(intrinsic_reward, dtype=torch.float)
 
             rewards = torch.tensor(rewards, dtype=torch.float)
             rewards = rewards.unsqueeze(1)
@@ -313,15 +320,15 @@ def main():
                 [[0.0] if done else [1.0] for done in dones], dtype=torch.float
             )
 
-            print('rewards: ', rewards)
+            # print('rewards: ', rewards)
             current_episode_reward += rewards
             episode_rewards += (1 - masks) * current_episode_reward
             episode_counts += 1 - masks
             current_episode_reward *= masks
 
-            print('current_episode_int_reward.shape, intrinsic_reward.shape: ', current_episode_int_reward.shape, intrinsic_reward.shape)
+            # print('current_episode_int_reward.shape, intrinsic_reward.shape: ', current_episode_int_reward.shape, intrinsic_reward.shape)
 
-            current_episode_int_reward += intrinsic_reward
+            current_episode_int_reward += intrinsic_reward  # shape (2, 1)
             episode_int_rewards += (1 - masks) * current_episode_int_reward
             current_episode_int_reward *= masks
 
