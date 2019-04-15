@@ -11,94 +11,101 @@ import torch
 import habitat
 from habitat.config.default import get_config
 from config.default import cfg as cfg_baseline
-
-from train_ppo import make_env_fn
-from rl.ppo.ppo_alg import PPO
-from rl.ppo.policy import Policy
-from rl.ppo.ppo_utils import batch_obs
 import sys
 
+from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
+from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
+
 import numpy as np
-import cv2
 import os
 import subprocess
 import shutil
 # import matplotlib.pyplot as plt
 from map_and_plan_agent.slam import DepthMapperAndPlanner as agent
 
-def visualize_traj(env, traj_coors, pointgoal, output_file):
-    """
-    env: interative environment;
-    traj_coors: list of each points' coordinate on the trajectory (coordinates are in the format of (x, _, y));
-    output_dir: output directory of the topdown freespace map
-    """
-    output_dir = os.path.join(*(output_file.split('/')[:-1]))
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
+class NavRLEnv(habitat.RLEnv):
+    def __init__(self, config_env, config_baseline, dataset):
+        self._config_env = config_env.TASK
+        self._config_baseline = config_baseline
+        self._previous_target_distance = None
+        self._previous_action = None
+        self._episode_distance_covered = None
+        super().__init__(config_env, dataset)
 
-    topdown_freespace_map = np.uint8(np.zeros([512, 512, 3]))
-    pix_f = [255, 255, 255]
+    def reset(self):
+        self._previous_action = None
 
-    minx = 100
-    miny = 100
-    maxx = -100
-    maxy = -100
+        observations = super().reset()
 
-    for _ in range(100000):
-        x, _, y = env.habitat_env.sim.sample_navigable_point()
-        if x < minx:
-            minx = x
-        if y < miny:
-            miny = y
-        if x > maxx:
-            maxx = x
-        if y > maxy:
-            maxy = y
+        self._previous_target_distance = self.habitat_env.current_episode.info[
+            "geodesic_distance"
+        ]
+        return observations
 
-    for _ in range(100000):
-        x, _, y = env.habitat_env.sim.sample_navigable_point()
-        gx = int((x - minx) / (maxx - minx) * 511)
-        gy = int((y - miny) / (maxy - miny) * 511)
-        topdown_freespace_map[gx, gy] = pix_f
+    def step(self, action):
+        self._previous_action = action
+        return super().step(action)
 
-    for i, coor in enumerate(traj_coors):
-        x, _, y = coor
-        gx = int((x - minx) / (maxx - minx) * 511)
-        gy = int((y - miny) / (maxy - miny) * 511)
-        if i == 0:
-            # print(gy, gx)
-            cv2.circle(topdown_freespace_map, (gy, gx), 8, (0, 126, 255), -1)
-        elif i == len(traj_coors) - 1:
-            cv2.circle(topdown_freespace_map, (gy, gx), 8, (255, 126, 0), -1)
-        else:
-            cv2.circle(topdown_freespace_map, (gy, gx), 6, (0, 255, 0), -1)
+    def get_reward_range(self):
+        return (
+            self._config_baseline.BASELINE.RL.SLACK_REWARD - 1.0,
+            self._config_baseline.BASELINE.RL.SUCCESS_REWARD + 1.0,
+        )
 
-    gx = int((pointgoal[0] - minx) / (maxx - minx) * 511)
-    gy = int((pointgoal[2] - miny) / (maxy - miny) * 511)
+    def get_reward(self, observations):
+        reward = self._config_baseline.BASELINE.RL.SLACK_REWARD
 
-    cv2.circle(topdown_freespace_map, (gy, gx), 8, (0, 0, 255), -1)
+        current_target_distance = self._distance_target()
+        reward += self._previous_target_distance - current_target_distance
+        self._previous_target_distance = current_target_distance
 
-    cv2.imwrite(os.path.join(output_file), topdown_freespace_map)
+        if self._episode_success():
+            reward += self._config_baseline.BASELINE.RL.SUCCESS_REWARD
 
-def frame_to_video(fileloc, t_w, t_h, destination):
-    command = ['ffmpeg',
-               '-y',
-               '-loglevel', 'fatal',
-               '-framerate', '4',
-               '-f', 'image2',  # 'image2pipe',
-               '-i', fileloc,
-               '-vcodec', 'libx264',
-               '-pix_fmt', 'yuv420p',
-               destination]
-    # print(command)
-    ffmpeg = subprocess.Popen(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    out, err = ffmpeg.communicate()
-    if err:
-        print('error', err)
-        return None
+        return reward
 
-    video = np.fromstring(out, dtype='uint8').reshape((-1, t_h, t_w, 3))  #NHWC
-    return video
+    def _distance_target(self):
+        current_position = self._env.sim.get_agent_state().position.tolist()
+        target_position = self._env.current_episode.goals[0].position
+        distance = self._env.sim.geodesic_distance(
+            current_position, target_position
+        )
+        return distance
+
+    def _episode_success(self):
+        if (
+                self._previous_action
+                == SIM_NAME_TO_ACTION[SimulatorActions.STOP.value]
+                and self._distance_target() < self._config_env.SUCCESS_DISTANCE
+        ):
+            return True
+        return False
+
+    def get_done(self, observations):
+        done = False
+        if self._env.episode_over or self._episode_success():
+            done = True
+        return done
+
+    def get_info(self, observations):
+        info = {}
+
+        if self.get_done(observations):
+            info["spl"] = self.habitat_env.get_metrics()["spl"]
+
+        return info
+
+
+def make_env_fn(config_env, config_baseline, rank):
+    dataset = PointNavDatasetV1(config_env.DATASET)
+    config_env.defrost()
+    config_env.SIMULATOR.SCENE = dataset.episodes[0].scene_id  # data/scene_datasets/gibson/Cantwell.glb
+    config_env.freeze()
+    env = NavRLEnv(
+        config_env=config_env, config_baseline=config_baseline, dataset=dataset
+    )
+    env.seed(rank)
+    return env
 
 PAUSE_TIME = 100
 
@@ -188,13 +195,8 @@ def main():
 
     while video_folder_index < args.count_test_episodes:
         observations = envs.reset()
-        observations = [observations]
-        batch = batch_obs(observations)
-        for sensor in batch:
-            batch[sensor] = batch[sensor].to(device)
 
         dones = False
-        target_position = envs._env.current_episode.goals[0].position
         # print('target_position: ', target_position)
         traj_coors = []
 
@@ -206,18 +208,12 @@ def main():
             if not os.path.exists(os.path.join("data", "video", str(video_folder_index))):
                 os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
-            actions = agent.act(batch)
+            actions = agent.act(observations)
 
             outputs = envs.step(actions.item())
 
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
-
-            observations = [observations]
-
-            batch = batch_obs(observations)
-            for sensor in batch:
-                batch[sensor] = batch[sensor].to(device)
 
             not_done_masks = torch.tensor(
                 [0.0 if dones else 1.0],
