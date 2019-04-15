@@ -8,7 +8,8 @@
 ### Folder explaination
 ```
 ppo_baseline_v0.01: stable version v0.01
-ppo_baseline: dev version v0.02 (curiosity)
+ppo_baseline_v0.02: curiosity
+ppo_baseline_v0.03: actually map-plan-baseline
 evaluate_ppo_vis_single_env.py: add visualization of V-saliency (depth v-saliency, rgb v-saliency)
 ```
 ### Development
@@ -38,7 +39,7 @@ evalai push rgbd_submission:latest --phase habitat19-rgb-val
 ```
 
 ### Tools
-`ppo_baseline/simple_agent.py`: Compute mean/std of dataset:
+`ppo_baseline_v0.02/simple_agent.py`: Compute mean/std of dataset:
 
 # Habitat-Challenge
 

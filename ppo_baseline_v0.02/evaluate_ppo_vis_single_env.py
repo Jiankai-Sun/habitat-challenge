@@ -24,7 +24,7 @@ import os
 import subprocess
 import shutil
 # import matplotlib.pyplot as plt
-from map_and_plan_agent.slam import DepthMapperAndPlanner as agent
+
 
 def visualize_traj(env, traj_coors, pointgoal, output_file):
     """
@@ -171,12 +171,41 @@ def main():
 
     ckpt = torch.load(args.model_path, map_location=device)
 
+    actor_critic = Policy(
+        observation_space=envs.observation_space,  # depth:Box(256, 256, 1), rgb:Box(256, 256, 3), pointgoal:Box(2,)
+        action_space=envs.action_space,  # Discrete(4)
+        hidden_size=512,
+    )
+
+    # print('envs.observation_spaces[0]: ', envs.observation_space, 'envs.action_spaces[0]: ', envs.action_space)
+    actor_critic.to(device)
+
+    ppo = PPO(
+        actor_critic=actor_critic,
+        icm_model=None,
+        clip_param=0.1,
+        ppo_epoch=4,
+        num_mini_batch=32,
+        value_loss_coef=0.5,
+        entropy_coef=0.01,
+        lr=2.5e-4,
+        eps=1e-5,
+        max_grad_norm=0.5,
+    )
+
+    ppo.load_state_dict(ckpt["state_dict"])
+
+    actor_critic = ppo.actor_critic
+
     episode_rewards = torch.zeros(1, 1, device=device)
     episode_spls = torch.zeros(1, 1, device=device)
     episode_success = torch.zeros(1, 1, device=device)
     episode_counts = torch.zeros(1, 1, device=device)
     current_episode_reward = torch.zeros(1, 1, device=device)
 
+    test_recurrent_hidden_states = torch.zeros(
+        args.num_processes, args.hidden_size, device=device
+    )
     not_done_masks = torch.zeros(args.num_processes, 1, device=device)
 
     action_times = 0
@@ -192,6 +221,7 @@ def main():
         batch = batch_obs(observations)
         for sensor in batch:
             batch[sensor] = batch[sensor].to(device)
+            batch[sensor].requires_grad_()
 
         dones = False
         target_position = envs._env.current_episode.goals[0].position
@@ -206,18 +236,59 @@ def main():
             if not os.path.exists(os.path.join("data", "video", str(video_folder_index))):
                 os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
-            actions = agent.act(batch)
+            value, actions, _, test_recurrent_hidden_states = actor_critic.act(
+                batch,
+                test_recurrent_hidden_states,
+                not_done_masks,
+                deterministic=False,
+            )
+            test_recurrent_hidden_states = test_recurrent_hidden_states.detach()
 
             outputs = envs.step(actions.item())
 
+            # gradient = torch.autograd.grad(outputs=value, inputs=batch['depth'],  #.cuda(),
+            #                             create_graph=False, retain_graph=False, only_inputs=True)[0]
+            gradient = torch.autograd.grad(outputs=value, inputs=batch['depth'],  #.cuda(),
+                                        create_graph=False, retain_graph=False, only_inputs=True)[0]
+
+            value_saliency = abs(gradient[0].detach().cpu().numpy())
+            # # Visualize the distribution of value_saliency
+            # plt.hist(value_saliency.reshape(-1), normed=True, bins=30)
+            # plt.show()
+            value_saliency = value_saliency / (value_saliency.max() + 1e-10) * 255
+
+            # mat = np.array(cv2.resize(observations[0]['rgb'], (480, 360)))
+            # cv2.putText(mat, "action:" + str(actions[0].item()) + " reward:" + str(rewards),
+            #             # + " target:" + str(observations[0]['pointgoal'].tolist()),
+            #             (15, 15),
+            #             cv2.FONT_HERSHEY_TRIPLEX, 0.5, (255, 255, 255), 1)
+            #
+            # cv2.imshow("Habitat-API Evaluation", mat)
+            # cv2.moveWindow("Habitat-API Evaluation", 0, 0)
+            # cv2.waitKey(PAUSE_TIME)
+
+            if 'rgb' in batch.keys() and not 'depth' in batch.keys():
+                frame = np.concatenate((observations[0]['rgb'], value_saliency), axis=1)
+            elif 'rgb' in batch.keys() and 'depth' in batch.keys():
+                frame = np.concatenate((observations[0]['rgb'], (observations[0]['depth'] * 255).repeat([3], axis=2), value_saliency.repeat([3], axis=2)), axis=1)
+            else:
+                raise NotImplementedError('Unsupported mode to save in observations')
+
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
+
+            cv2.putText(frame, "action: {0} reward: {0:.2f}".format(actions[0].item(), rewards),
+                        (15, 15),
+                        cv2.FONT_HERSHEY_TRIPLEX, 0.5, (255, 255, 255), 1)
+            cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
+                        frame)  # (90, 90, 3)
 
             observations = [observations]
 
             batch = batch_obs(observations)
             for sensor in batch:
                 batch[sensor] = batch[sensor].to(device)
+                batch[sensor].requires_grad_()
 
             not_done_masks = torch.tensor(
                 [0.0 if dones else 1.0],
@@ -228,8 +299,44 @@ def main():
                 if not_done_masks[i].item() == 0:
                     episode_spls[i] += infos["spl"]
 
+                    # cv2.putText(mat, 'Done!', (160, 200), cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 255), 2)
+                    # cv2.imshow("Habitat-API Evaluation", mat)
+                    # cv2.moveWindow("Habitat-API Evaluation", 0, 0)
+                    # cv2.waitKey(PAUSE_TIME * 2)
+                    # cv2.destroyAllWindows()
+
                     action_times = 0
 
+                    if infos["spl"] > 0:
+                        success_log.write('{0}:True\n'.format(video_folder_index))
+                        episode_success[i] += 1
+
+                        frame_to_video(fileloc=os.path.join("data", "video", str(video_folder_index), "%d.png"),
+                                       t_w=img_width,
+                                       t_h=img_height,
+                                       destination=os.path.join("data", "video", str(video_folder_index) + "_True.mp4"))
+                        try:
+                            visualize_traj(envs, traj_coors, target_position, os.path.join('data', 'top_down_vis', '{0}_True.png'.format(video_folder_index)))
+                        except:
+                            print('{0} visualize error'.format(video_folder_index))
+
+                    else:
+                        success_log.write('{0}:False\n'.format(video_folder_index))
+
+                        frame_to_video(fileloc=os.path.join("data", "video", str(video_folder_index), "%d.png"),
+                                       t_w=img_width,
+                                       t_h=img_height,
+                                       destination=os.path.join("data", "video", str(video_folder_index) + "_False.mp4"))
+                        try:
+                            visualize_traj(envs, traj_coors, target_position, os.path.join('data', 'top_down_vis', '{0}_False.png'.format(video_folder_index)))
+                        except:
+                            print('{0} visualize error'.format(video_folder_index))
+
+                    shutil.rmtree(os.path.join("data", "video", str(video_folder_index)))
+                    traj_coors = []
+                    video_folder_index += 1
+
+                    success_log.flush()
             rewards = torch.tensor(
                 [rewards], dtype=torch.float, device=device
             ).unsqueeze(1)
