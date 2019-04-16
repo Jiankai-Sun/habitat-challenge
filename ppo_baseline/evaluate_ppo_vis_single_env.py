@@ -3,7 +3,8 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
+import sys
+sys.path.insert(0, './map_and_plan_agent/')
 import argparse
 
 import torch
@@ -11,17 +12,10 @@ import torch
 import habitat
 from habitat.config.default import get_config
 from config.default import cfg as cfg_baseline
-import sys
-
 from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 
-import numpy as np
-import os
-import subprocess
-import shutil
-# import matplotlib.pyplot as plt
-from map_and_plan_agent.slam import DepthMapperAndPlanner as agent
+from map_and_plan_agent.slam import DepthMapperAndPlanner
 
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
@@ -111,8 +105,7 @@ PAUSE_TIME = 100
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, required=True)
-    # parser.add_argument("--sim-gpu-id", type=int, required=True)
+    parser.add_argument("--model-path", default=None, type=str)
     parser.add_argument(
         "--sim-gpu-id",
         nargs='+',
@@ -149,34 +142,23 @@ def main():
     config_env = get_config(config_file=args.task_config)
     config_env.defrost()
     config_env.DATASET.SPLIT = "val"
-    # TODO
-    # config_env.SIMULATOR.RGB_SENSOR.HFOV = 180
-    # config_env.SIMULATOR.DEPTH_SENSOR.HFOV = 180
 
     agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS
-    if 'RGB_SENSOR' in agent_sensors and not 'DEPTH_SENSOR' in agent_sensors:
-        img_width = 90 * 2
-        img_height = 90
-    elif 'RGB_SENSOR' in agent_sensors and 'DEPTH_SENSOR' in agent_sensors:
-        img_width = 90 * 3
-        img_height = 90
-    else:
-        raise NotImplementedError('Unsupported mode in observations')
 
-    # print('agent_sensors: ', agent_sensors)
     for sensor in agent_sensors:
         assert sensor in ["RGB_SENSOR", "DEPTH_SENSOR"]
     config_env.freeze()
-    # env_configs.append(config_env)
 
     config_baseline = cfg_baseline()
     # baseline_configs.append(config_baseline)
     #
     # assert len(baseline_configs) > 0, "empty list of datasets"
 
-    envs = make_env_fn(config_env, config_baseline, 0)  # habitat.Env(env_configs)
+    envs = make_env_fn(config_env, config_baseline, 0)
 
-    ckpt = torch.load(args.model_path, map_location=device)
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
+                                  reset_if_drift=True, count=-1, close_small_openings=True,
+                                  recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 
     episode_rewards = torch.zeros(1, 1, device=device)
     episode_spls = torch.zeros(1, 1, device=device)
@@ -184,33 +166,19 @@ def main():
     episode_counts = torch.zeros(1, 1, device=device)
     current_episode_reward = torch.zeros(1, 1, device=device)
 
-    not_done_masks = torch.zeros(args.num_processes, 1, device=device)
-
     action_times = 0
     video_folder_index = 0
-
-    if not os.path.exists(os.path.join("data", "video")):
-        os.makedirs(os.path.join("data", "video"))
-    success_log = open(os.path.join("data", "video", "success_log.txt"), "w")
 
     while video_folder_index < args.count_test_episodes:
         observations = envs.reset()
 
         dones = False
-        # print('target_position: ', target_position)
-        traj_coors = []
 
         while not dones:
-            current_position = envs._env.sim.get_agent_state().position.tolist()
-            # print('current_position: ', current_position)
-            traj_coors.append(current_position)
-
-            if not os.path.exists(os.path.join("data", "video", str(video_folder_index))):
-                os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
-            actions = agent.act(observations)
+            actions = agent.act(observations=observations)
 
-            outputs = envs.step(actions.item())
+            outputs = envs.step(actions)
 
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
@@ -241,6 +209,7 @@ def main():
         print("Average episode reward: {:.6f}".format(episode_reward_mean))
         print("Average episode success: {:.6f}".format(episode_success_mean))
         print("Average episode spl: {:.6f}".format(episode_spl_mean))
+        video_folder_index += 1
 
 
 if __name__ == "__main__":

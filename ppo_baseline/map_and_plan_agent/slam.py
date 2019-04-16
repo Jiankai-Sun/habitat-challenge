@@ -35,7 +35,9 @@ class DepthMapperAndPlanner(object):
     self.fix_thrashing = fix_thrashing
     self.goal_f = goal_f
     self.point_cnt = point_cnt
-    print(self.elevation, self.camera_height, self.upper_lim, self.lower_lim)
+    self.reset()
+    print('self.elevation: {0}, self.camera_height: {1}, self.upper_lim: {2}, self.lower_lim: {3}.'
+          .format(self.elevation, self.camera_height, self.upper_lim, self.lower_lim))
 
   def reset(self):
     self.RESET = True
