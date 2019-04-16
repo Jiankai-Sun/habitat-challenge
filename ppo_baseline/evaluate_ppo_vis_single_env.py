@@ -6,7 +6,7 @@
 import sys
 sys.path.insert(0, './map_and_plan_agent/')
 import argparse
-
+import os
 import torch
 
 import habitat
@@ -132,12 +132,18 @@ def main():
         default="tasks/pointnav.yaml",
         help="path to config yaml containing information about task",
     )
+    parser.add_argument(
+        "--outdir",
+        type=str,
+        default="data/slam_result/out_dir",
+        help="directory to save result",
+    )
     args = parser.parse_args()
 
-    device = torch.device("cuda:{}".format(args.pth_gpu_id))
+    if not os.path.exists(args.outdir):
+        os.makedirs(args.outdir)
 
-    # env_configs = []
-    # baseline_configs = []
+    device = torch.device("cuda:{}".format(args.pth_gpu_id))
 
     config_env = get_config(config_file=args.task_config)
     config_env.defrost()
@@ -150,13 +156,10 @@ def main():
     config_env.freeze()
 
     config_baseline = cfg_baseline()
-    # baseline_configs.append(config_baseline)
-    #
-    # assert len(baseline_configs) > 0, "empty list of datasets"
 
     envs = make_env_fn(config_env, config_baseline, 0)
 
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=True,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
                                   recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 
@@ -166,7 +169,6 @@ def main():
     episode_counts = torch.zeros(1, 1, device=device)
     current_episode_reward = torch.zeros(1, 1, device=device)
 
-    action_times = 0
     video_folder_index = 0
 
     while video_folder_index < args.count_test_episodes:
@@ -175,7 +177,6 @@ def main():
         dones = False
 
         while not dones:
-            action_times += 1
             actions = agent.act(observations=observations)
 
             outputs = envs.step(actions)
@@ -188,11 +189,13 @@ def main():
                 dtype=torch.float,
                 device=device,
             )
+
             for i in range(not_done_masks.shape[0]):
                 if not_done_masks[i].item() == 0:
                     episode_spls[i] += infos["spl"]
 
-                    action_times = 0
+                    if infos["spl"] > 0:
+                        episode_success[i] += 1
 
             rewards = torch.tensor(
                 [rewards], dtype=torch.float, device=device

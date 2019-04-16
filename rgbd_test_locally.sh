@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-DOCKER_NAME="rgbd_submission:v0.01"
+DOCKER_NAME="rgbd_submission:v0.02"
 
 while [[ $# -gt 0 ]]
 do
