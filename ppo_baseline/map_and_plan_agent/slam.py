@@ -18,14 +18,14 @@ def subplot(plt, Y_X, sz_y_sz_x = (10, 10)):
 class DepthMapperAndPlanner(object):
   def __init__(self, dt=10, camera_height=125., upper_lim=150., map_size_cm=6000, out_dir=None,
       mark_locs=False, reset_if_drift=False, count=-1, close_small_openings=False,
-      recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2):
+      recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2, thrashing_threshold=4, success_distance=0.2):
     self.map_size_cm = map_size_cm
     self.dt = dt
     self.count = count
     self.out_dir = out_dir
     self.mark_locs = mark_locs
     self.reset_if_drift = reset_if_drift
-    self.elevation = 0. #np.rad2deg(env_config.SIMULATOR.DEPTH_SENSOR.ORIENTATION[0])
+    self.elevation = 0.  # np.rad2deg(env_config.SIMULATOR.DEPTH_SENSOR.ORIENTATION[0])
     self.camera_height = camera_height
     self.upper_lim = upper_lim
     self.lower_lim = 20
@@ -35,7 +35,8 @@ class DepthMapperAndPlanner(object):
     self.fix_thrashing = fix_thrashing
     self.goal_f = goal_f
     self.point_cnt = point_cnt
-    self.reset()
+    self.thrashing_threshold = thrashing_threshold
+    self.success_distance = success_distance
     print('self.elevation: {0}, self.camera_height: {1}, self.upper_lim: {2}, self.lower_lim: {3}.'
           .format(self.elevation, self.camera_height, self.upper_lim, self.lower_lim))
 
@@ -70,6 +71,8 @@ class DepthMapperAndPlanner(object):
       self.trials = 0
       self.rgbs = []
       self.depths = []
+      self.fmms = []
+      self.maps = []
       self.recovery_actions = []
       self.thrashing_actions = []
   
@@ -78,7 +81,7 @@ class DepthMapperAndPlanner(object):
     d = depth[:,:,0]*1
     d[d == 0] = np.NaN
     d[d > 990] = np.NaN
-    XYZ1 = du.get_point_cloud_from_z(d, self.camera);
+    XYZ1 = du.get_point_cloud_from_z(d, self.camera)
     # print(np.min(XYZ1.reshape(-1,3), 0), np.max(XYZ1.reshape(-1,3), 0))
     XYZ2 = du.make_geocentric(XYZ1*1, self.camera_height, self.elevation)
     # print(np.min(XYZ2.reshape(-1,3), 0), np.max(XYZ2.reshape(-1,3), 0))
@@ -260,7 +263,7 @@ class DepthMapperAndPlanner(object):
     if done:
       if self.out_dir is not None and hasattr(self, 'locs'):
         self.save_vis()
-        if self.last_pointgoal is not None and self.last_pointgoal[0] > 1:
+        if self.last_pointgoal is not None and self.last_pointgoal[0] > self.success_distance:
           self.write_mp4_imageio()
       self._reset(pointgoal[0]*100.)
       # self.current_loc has been set inside reset
@@ -286,7 +289,7 @@ class DepthMapperAndPlanner(object):
         act = self.recovery_actions[0] 
         self.recovery_actions = self.recovery_actions[1:]
     
-    thrashing = self.check_thrashing(8, self.acts)
+    thrashing = self.check_thrashing(self.thrashing_threshold, self.acts)
     if thrashing and len(self.thrashing_actions) == 0:
       self.thrashing_actions = act_seq 
       # print(1, self.thrashing_actions)
@@ -302,18 +305,24 @@ class DepthMapperAndPlanner(object):
     
     self.depths.append((depth[...,0]*255).astype(np.uint8))
     self.rgbs.append(rgb)
+    self.maps.append(self.map)
+    self.fmms.append(self.fmm_dist)
     self.last_pointgoal = pointgoal + 0
-    
+
     return act
   
   def write_mp4_imageio(self):
-    sz = self.rgbs[0].shape[0]
     out_file_name = os.path.join(self.out_dir, '{:04d}.gif'.format(self.count))
     imageio.mimsave(out_file_name, self.rgbs)
-    
-    sz = self.depths[0].shape[0]
+
     out_file_name = os.path.join(self.out_dir, '{:04d}_d.gif'.format(self.count))
     imageio.mimsave(out_file_name, self.depths)
+
+    out_file_name = os.path.join(self.out_dir, '{:04d}_map.gif'.format(self.count))
+    imageio.mimsave(out_file_name, self.maps)
+
+    out_file_name = os.path.join(self.out_dir, '{:04d}_fmm.gif'.format(self.count))
+    imageio.mimsave(out_file_name, self.fmms)
 
   def write_mp4_cv2(self):
     sz = self.rgbs[0].shape[0]

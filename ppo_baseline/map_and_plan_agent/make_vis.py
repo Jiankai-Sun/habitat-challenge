@@ -26,8 +26,15 @@ def main(_):
               with tag('img', src='{:04d}_d.gif'.format(i)):
                 None
             with tag('td'):
+              with tag('img', src='{:04d}_map.gif'.format(i)):
+                None
+            with tag('td'):
+              with tag('img', src='{:04d}_fmm.gif'.format(i)):
+                None
+            with tag('td'):
               with tag('img', src='{:04d}.png'.format(i), height='256px'):
                 None
+
   out_file = os.path.join(FLAGS.out_dir, 'vis.html')
   with open(out_file, 'w') as f:
     print(indent(doc.getvalue()), file=f)

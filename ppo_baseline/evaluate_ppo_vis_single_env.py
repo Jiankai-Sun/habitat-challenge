@@ -175,6 +175,7 @@ def main():
         observations = envs.reset()
 
         dones = False
+        agent.reset()
 
         while not dones:
             actions = agent.act(observations=observations)
@@ -204,6 +205,7 @@ def main():
             episode_rewards += (1 - not_done_masks) * current_episode_reward
             episode_counts += 1 - not_done_masks
             current_episode_reward *= not_done_masks
+
         episode_reward_mean = (episode_rewards / episode_counts).mean().item()
         episode_spl_mean = (episode_spls / episode_counts).mean().item()
         episode_success_mean = (episode_success / episode_counts).mean().item()
