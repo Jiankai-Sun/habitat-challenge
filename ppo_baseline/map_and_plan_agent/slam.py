@@ -18,7 +18,7 @@ def subplot(plt, Y_X, sz_y_sz_x = (10, 10)):
 class DepthMapperAndPlanner(object):
   def __init__(self, dt=10, camera_height=125., upper_lim=150., map_size_cm=6000, out_dir=None,
       mark_locs=False, reset_if_drift=False, count=-1, close_small_openings=False,
-      recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2, thrashing_threshold=4, success_distance=0.2):
+      recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2, thrashing_threshold=4, success_distance=-1):
     self.map_size_cm = map_size_cm
     self.dt = dt
     self.count = count
@@ -40,8 +40,9 @@ class DepthMapperAndPlanner(object):
     print('self.elevation: {0}, self.camera_height: {1}, self.upper_lim: {2}, self.lower_lim: {3}.'
           .format(self.elevation, self.camera_height, self.upper_lim, self.lower_lim))
 
-  def reset(self):
+  def reset(self, spl_record=0):
     self.RESET = True
+    self.spl_record = spl_record
      
   def _reset(self, goal_dist, soft=False):
     # Create an empty map of some size
@@ -188,9 +189,9 @@ class DepthMapperAndPlanner(object):
       ax = axes.pop()
       ax.plot(acts)
       plt.savefig(os.path.join(
-        self.out_dir, '{:04d}_{:03d}.png'.format(self.count, self.trials)),
+        self.out_dir, '{0:04d}_{1:03d}.png'.format(self.count, self.trials)),
         bbox_inches='tight')
-      plt.savefig(os.path.join(self.out_dir, '{:04d}.png'.format(self.count)),
+      plt.savefig(os.path.join(self.out_dir, '{0:04d}.png'.format(self.count)),
         bbox_inches='tight')
       plt.close()
   
@@ -305,28 +306,28 @@ class DepthMapperAndPlanner(object):
     
     self.depths.append((depth[...,0]*255).astype(np.uint8))
     self.rgbs.append(rgb)
-    self.maps.append(self.map)
-    self.fmms.append(self.fmm_dist)
+    self.maps.append(self.map.astype(np.uint8))
+    self.fmms.append(self.fmm_dist.astype(np.uint8))
     self.last_pointgoal = pointgoal + 0
 
     return act
   
   def write_mp4_imageio(self):
-    out_file_name = os.path.join(self.out_dir, '{:04d}.gif'.format(self.count))
+    out_file_name = os.path.join(self.out_dir, '{0:04d}.gif'.format(self.count))
     imageio.mimsave(out_file_name, self.rgbs)
 
-    out_file_name = os.path.join(self.out_dir, '{:04d}_d.gif'.format(self.count))
+    out_file_name = os.path.join(self.out_dir, '{0:04d}_d.gif'.format(self.count))
     imageio.mimsave(out_file_name, self.depths)
 
-    out_file_name = os.path.join(self.out_dir, '{:04d}_map.gif'.format(self.count))
+    out_file_name = os.path.join(self.out_dir, '{0:04d}_map.gif'.format(self.count))
     imageio.mimsave(out_file_name, self.maps)
 
-    out_file_name = os.path.join(self.out_dir, '{:04d}_fmm.gif'.format(self.count))
+    out_file_name = os.path.join(self.out_dir, '{0:04d}_fmm.gif'.format(self.count))
     imageio.mimsave(out_file_name, self.fmms)
 
   def write_mp4_cv2(self):
     sz = self.rgbs[0].shape[0]
-    out_file_name = os.path.join(self.out_dir, '{:04d}.mp4'.format(self.count))
+    out_file_name = os.path.join(self.out_dir, '{0:04d}.mp4'.format(self.count))
     video = cv2.VideoWriter(out_file_name, -1, 10, (sz, sz))
     for rgb in self.rgbs:
       video.write(rgb[:,:,::-1])
@@ -334,7 +335,7 @@ class DepthMapperAndPlanner(object):
 
   def write_mp4(self):
     sz = self.depths[0].shape[0]
-    out_file_name = os.path.join(self.out_dir, '{:04d}.mp4'.format(self.count))
+    out_file_name = os.path.join(self.out_dir, '{0:04d}.mp4'.format(self.count))
     ffmpeg_bin = 'ffmpeg'
     command = [ffmpeg_bin,
         '-y', # (optional) overwrite output file if it exists

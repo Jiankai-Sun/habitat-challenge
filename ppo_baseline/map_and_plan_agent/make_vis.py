@@ -5,7 +5,7 @@ from yattag import Doc
 from yattag import indent
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('out_dir', '', '')
+flags.DEFINE_string("../data/slam_result/out_dir", '', '')
 
 def main(_):
   doc, tag, text = Doc().tagtext()
@@ -38,11 +38,11 @@ def main(_):
   out_file = os.path.join(FLAGS.out_dir, 'vis.html')
   with open(out_file, 'w') as f:
     print(indent(doc.getvalue()), file=f)
-  good_inds = list(range(682)) + list(range(744, 1000))
-  print(np.mean(spls[:,1]))
-  print(np.mean(spls[:,1] > 0))
-  print(np.mean(spls[good_inds,1]))
-  print(np.mean(spls[good_inds,1] > 0))
+  # good_inds = list(range(682)) + list(range(744, 1000))
+  print('Mean success rate: {0}'.format(np.mean(spls[:,1])))
+  print('Mean SPL: {0}'.format(np.mean(spls[:,1] > 0)))
+  # print(np.mean(spls[good_inds,1]))
+  # print(np.mean(spls[good_inds,1] > 0))
 
 if __name__ == '__main__':
   app.run(main)

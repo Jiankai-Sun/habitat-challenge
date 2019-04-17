@@ -14,6 +14,7 @@ from habitat.config.default import get_config
 from config.default import cfg as cfg_baseline
 from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
+import numpy as np
 
 from map_and_plan_agent.slam import DepthMapperAndPlanner
 
@@ -169,13 +170,15 @@ def main():
     episode_counts = torch.zeros(1, 1, device=device)
     current_episode_reward = torch.zeros(1, 1, device=device)
 
-    video_folder_index = 0
-
-    while video_folder_index < args.count_test_episodes:
+    test_episodes = 0
+    spl_record = 1
+    spl_np = np.zeros((1000, 2))
+    while test_episodes < args.count_test_episodes:
         observations = envs.reset()
 
         dones = False
-        agent.reset()
+
+        agent.reset(spl_record=spl_record)
 
         while not dones:
             actions = agent.act(observations=observations)
@@ -194,7 +197,7 @@ def main():
             for i in range(not_done_masks.shape[0]):
                 if not_done_masks[i].item() == 0:
                     episode_spls[i] += infos["spl"]
-
+                    spl_record = infos["spl"]
                     if infos["spl"] > 0:
                         episode_success[i] += 1
 
@@ -204,17 +207,26 @@ def main():
             current_episode_reward += rewards
             episode_rewards += (1 - not_done_masks) * current_episode_reward
             episode_counts += 1 - not_done_masks
+            current_episode_reward_data = current_episode_reward.item()
             current_episode_reward *= not_done_masks
 
         episode_reward_mean = (episode_rewards / episode_counts).mean().item()
         episode_spl_mean = (episode_spls / episode_counts).mean().item()
         episode_success_mean = (episode_success / episode_counts).mean().item()
 
-        print('Episode {0}:'.format(video_folder_index))
+        print('Episode {0}:'.format(test_episodes))
         print("Average episode reward: {:.6f}".format(episode_reward_mean))
         print("Average episode success: {:.6f}".format(episode_success_mean))
         print("Average episode spl: {:.6f}".format(episode_spl_mean))
-        video_folder_index += 1
+        print("Episode reward: {:.6f}".format(current_episode_reward_data))
+        print("Episode success: {0}".format(infos["spl"] > 0))
+        print("Episode spl: {:.6f}".format(infos["spl"]))
+        spl_np[test_episodes, 0] = test_episodes
+        spl_np[test_episodes, 1] = infos["spl"]
+
+        test_episodes += 1
+        np.savetxt(os.path.join(args.outdir, 'spls.txt'), spl_np)
+    print('Eval Finished!')
 
 
 if __name__ == "__main__":
