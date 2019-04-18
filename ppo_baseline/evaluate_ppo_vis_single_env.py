@@ -91,10 +91,10 @@ class NavRLEnv(habitat.RLEnv):
         return info
 
 
-def make_env_fn(config_env, config_baseline, rank):
+def make_env_fn(config_env, config_baseline, rank, episodes_index=0):
     dataset = PointNavDatasetV1(config_env.DATASET)
     config_env.defrost()
-    config_env.SIMULATOR.SCENE = dataset.episodes[0].scene_id  # data/scene_datasets/gibson/Cantwell.glb
+    config_env.SIMULATOR.SCENE = dataset.episodes[episodes_index].scene_id  # data/scene_datasets/gibson/Cantwell.glb
     config_env.freeze()
     env = NavRLEnv(
         config_env=config_env, config_baseline=config_baseline, dataset=dataset
@@ -158,7 +158,7 @@ def main():
 
     config_baseline = cfg_baseline()
 
-    envs = make_env_fn(config_env, config_baseline, 0)
+    envs = make_env_fn(config_env=config_env, config_baseline=config_baseline, rank=0, episodes_index=0)
 
     agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=True,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
