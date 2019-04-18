@@ -20,7 +20,7 @@ def subplot(plt, Y_X, sz_y_sz_x=(10, 10)):
 class DepthMapperAndPlanner(object):
     def __init__(self, dt=10, camera_height=125., upper_lim=150., map_size_cm=6000, out_dir=None,
                  mark_locs=False, reset_if_drift=False, count=-1, close_small_openings=False,
-                 recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2, thrashing_threshold=2,
+                 recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2, thrashing_threshold=12,
                  success_distance=-1):
         self.map_size_cm = map_size_cm
         self.dt = dt
@@ -43,9 +43,8 @@ class DepthMapperAndPlanner(object):
         print('self.elevation: {0}, self.camera_height: {1}, self.upper_lim: {2}, self.lower_lim: {3}.'
               .format(self.elevation, self.camera_height, self.upper_lim, self.lower_lim))
 
-    def reset(self, spl_record=0):
+    def reset(self):
         self.RESET = True
-        self.spl_record = spl_record
 
     def _reset(self, goal_dist, soft=False):
         # Create an empty map of some size

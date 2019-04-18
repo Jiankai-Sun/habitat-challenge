@@ -171,14 +171,13 @@ def main():
     current_episode_reward = torch.zeros(1, 1, device=device)
 
     test_episodes = 0
-    spl_record = 1
     spl_np = np.zeros((1000, 2))
     while test_episodes < args.count_test_episodes:
         observations = envs.reset()
 
         dones = False
 
-        agent.reset(spl_record=spl_record)
+        agent.reset()
 
         while not dones:
             actions = agent.act(observations=observations)
