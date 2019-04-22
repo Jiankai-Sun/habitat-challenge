@@ -48,7 +48,7 @@ class FMMPlanner():
         collision_reward = 0
         for i in range(len(u_list)):
             action = u_list[i]
-            x_new, y_new, t_new = x*1., y*1. , t*1.
+            x_new, y_new, t_new = x*1., y*1., t*1.
             if action == 3:
                 angl = t
                 x_new = x+np.cos(angl)*self.du

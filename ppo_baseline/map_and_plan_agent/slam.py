@@ -47,29 +47,33 @@ class DepthMapperAndPlanner(object):
         self.RESET = True
 
     def _reset(self, goal_dist, soft=False):
-        # Create an empty map of some size
-        resolution = self.resolution = 5
-        self.selem = skimage.morphology.disk(10 / resolution)
-        self.selem_small = skimage.morphology.disk(1)
-        # 0 agent moves forward. Agent moves in the direction of +x
-        # 1 rotates left
-        # 2 rotates right
-        # 3 agent stop
-        self.z_bins = [self.lower_lim, self.upper_lim]
-        map_size_cm = np.maximum(self.map_size_cm, goal_dist * 2 * self.goal_f) // resolution
-        map_size_cm = int(map_size_cm * resolution)
-        self.map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1, len(self.z_bins) + 1),
-                            dtype=np.float32)
-        self.loc_on_map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1), dtype=np.float32)
-        self.current_loc = np.array([(self.map.shape[0] - 1) / 2, (self.map.shape[0] - 1) / 2, 0], np.float32)
-        self.current_loc[:2] = self.current_loc[:2] * resolution
-        self.camera = du.get_camera_matrix(256, 256, 90)
-        self.goal_loc = None
-        self.last_act = 3
-        self.locs = []
-        self.acts = []
-        self.last_pointgoal = None
         if not soft:
+            # Create an empty map of some size
+            resolution = self.resolution = 5
+            self.selem = skimage.morphology.disk(10 / resolution)
+            self.selem_small = skimage.morphology.disk(1)
+            # 0 agent moves forward. Agent moves in the direction of +x
+            # 1 rotates left
+            # 2 rotates right
+            # 3 agent stop
+            self.z_bins = [self.lower_lim, self.upper_lim]
+
+            self.camera = du.get_camera_matrix(256, 256, 90)
+
+            map_size_cm = np.maximum(self.map_size_cm, goal_dist * 2 * self.goal_f) // resolution
+            map_size_cm = int(map_size_cm * resolution)
+
+            self.loc_on_map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1), dtype=np.float32)
+            self.map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1, len(self.z_bins) + 1),
+                                dtype=np.float32)
+            self.current_loc = np.array([(self.map.shape[0] - 1) / 2, (self.map.shape[0] - 1) / 2, 0], np.float32)
+            self.current_loc[:2] = self.current_loc[:2] * resolution
+            self.goal_loc = None
+            self.last_act = 3
+            self.last_pointgoal = None
+            self.locs = []
+            self.acts = []
+
             self.num_resets = 0
             self.count = self.count + 1
             self.trials = 0
@@ -209,9 +213,12 @@ class DepthMapperAndPlanner(object):
         self.num_resets = self.num_resets + 1
         xy = self.compute_xy_from_pointnav(pointgoal)
         # self.current_loc has been set inside reset
-        self.goal_loc = xy * 1
-        self.goal_loc[0] = self.goal_loc[0] + self.current_loc[0]
-        self.goal_loc[1] = self.goal_loc[1] + self.current_loc[1]
+        goal_loc = xy * 1
+        # self.goal_loc[0] = self.goal_loc[0] + self.current_loc[0]
+        # self.goal_loc[1] = self.goal_loc[1] + self.current_loc[1]
+
+        self.current_loc[0] = self.goal_loc[0] - goal_loc[0]
+        self.current_loc[1] = self.goal_loc[1] - goal_loc[1]
         self.mark_on_map(self.goal_loc)
         self.mark_on_map(self.current_loc)
         if self.num_resets == 6:
