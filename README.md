@@ -9,7 +9,7 @@
 ```
 ppo_baseline_v0.01: stable version v0.01
 ppo_baseline_v0.02: curiosity
-ppo_baseline_v0.03: actually map-plan-baseline
+ppo_baseline_v0.03: actually map-plan-baseline, spl=0.923
 evaluate_ppo_vis_single_env.py: add visualization of V-saliency (depth v-saliency, rgb v-saliency)
 ```
 ### Development
@@ -34,7 +34,7 @@ bash evaluate_ppo.sh
 bash rgbd_build_docker.sh
 bash rgb_build_docker.sh
 
-evalai push rgbd_submission:latest --phase habitat19-rgb-val
+evalai push rgbd_submission:latest --phase habitat19-rgbd-val
 # habitat19-{rgb, rgbd}-{val, test-std, test-ch}
 ```
 

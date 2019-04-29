@@ -4,7 +4,7 @@ from absl import app
 from yattag import Doc
 from yattag import indent
 
-OUT_DIR="../data/slam_result/out_dir_0"
+OUT_DIR="../data/slam_result/out_dir_multi_step_2"
 
 def main(_):
   doc, tag, text = Doc().tagtext()

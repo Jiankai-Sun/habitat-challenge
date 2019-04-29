@@ -2,6 +2,13 @@
 [Saurabh Gupta](http://saurabhg.web.illinois.edu/) \
 Facebook AI Research
 
+### How to Run
+```
+bash evaluate_debug.sh
+# Visualization
+cd map_and_plan_agent; python make_vis.py
+```
+
 ### Abstract
 This baseline implements a basic *classical* map building and path planning algorithm for
 the task of reaching a specified point under known odometry with depth images

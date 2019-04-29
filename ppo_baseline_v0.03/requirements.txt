@@ -1,0 +1,6 @@
+opencv-contrib-python
+scikit-image==0.15.0
+scikit-fmm
+yattag
+absl-py
+tensorflow-gpu==1.11

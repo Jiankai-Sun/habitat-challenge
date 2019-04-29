@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-evalai set_token b15a5fa57eab65823131b788c76d4cf1bad726a7
+evalai set_token 698b115dc66280f246ef8d21ddc623ca3c5d6b49
 
 # Push docker image to EvalAI docker registry
 # RGBD
-evalai push rgbd_submission:v0.02 --phase habitat19-rgbd-val
+evalai push rgbd_submission:v0.02 --phase habitat19-rgbd-minival
 # RGB
 # evalai push rgb_submission:v0.02 --phase habitat19-rgb-val

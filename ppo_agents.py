@@ -8,7 +8,7 @@ import argparse
 
 import habitat
 from habitat import Config
-from ppo_baseline.map_and_plan_agent.slam import DepthMapperAndPlanner
+from ppo_baseline.map_and_plan_agent.bak.slam import DepthMapperAndPlanner
 
 
 def get_defaut_config():
