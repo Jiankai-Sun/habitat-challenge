@@ -9,13 +9,12 @@ step_size = 5
 num_rots = 36
 
 class FMMPlanner():
-    def __init__(self, traversible, num_rots, action_counter):
+    def __init__(self, traversible, num_rots):
         self.traversible = traversible
         self.angle_value = [0, 2.0*np.pi/num_rots, -2.0*np.pi/num_rots, 0]
         self.du = step_size
         self.num_rots = num_rots
         self.action_list = self.search_actions()
-        self.action_counter = action_counter
     
     def set_goal(self, goal):
         traversible_ma = ma.masked_values(self.traversible*1, 0)  # (384, 384)
@@ -82,7 +81,7 @@ class FMMPlanner():
             x_new, y_new, t_new = x*1., y*1., t*1.
             if action == 3:
                 angl = t
-                x_new = x+np.cos(angl)*self.du
+                x_new = x+np.cos(angl)*self.du  # self.du = 5
                 y_new = y+np.sin(angl)*self.du
                 t_new = angl
             elif action > 0:
@@ -118,7 +117,7 @@ class FMMPlanner():
             reward_near_goal = 1.
         costs = (cost_end - cost_start)
         reward = -costs + reward_near_goal + collision_reward
-        # print('reward: ', reward, 'cost: ', costs, 'reward_near_goal: ', reward_near_goal, 'collision_reward: ', collision_reward)
+        print('action: ', u_list[0], 'cost: ', costs, 'reward_near_goal: ', reward_near_goal, 'collision_reward: ', collision_reward)
         return reward, (out_states), reward_near_goal
 
     def find_best_action_set(self, state, spacious=False, multi_act=0):

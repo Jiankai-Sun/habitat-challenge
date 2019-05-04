@@ -2,12 +2,15 @@ import numpy as np, cv2, imageio
 import os
 import depth_utils as du
 import rotation_utils as ru
-# from fmm_planner import FMMPlanner
-from fmm_planner_multi_step import FMMPlanner
+from fmm_planner import FMMPlanner
 import skimage
 import matplotlib.pyplot as plt
 import subprocess as sp
-
+import torch
+from fcrn import FCRN
+import torch.nn as nn
+from torch.autograd import Variable
+import torch
 
 def subplot(plt, Y_X, sz_y_sz_x=(10, 10)):
     Y, X = Y_X
@@ -22,7 +25,7 @@ class DepthMapperAndPlanner(object):
     def __init__(self, dt=10, camera_height=125., upper_lim=150., map_size_cm=6000, out_dir=None,
                  mark_locs=False, reset_if_drift=False, count=-1, close_small_openings=False,
                  recover_on_collision=False, fix_thrashing=False, goal_f=1.1, point_cnt=2, thrashing_threshold=12,
-                 success_distance=-1):
+                 success_distance=-1, device=None):
         self.map_size_cm = map_size_cm
         self.dt = dt
         self.count = count
@@ -41,78 +44,49 @@ class DepthMapperAndPlanner(object):
         self.point_cnt = point_cnt
         self.thrashing_threshold = thrashing_threshold
         self.success_distance = success_distance
-        self.num_rotation = 0
-        self.action_counter = 0
         print('self.elevation: {0}, self.camera_height: {1}, self.upper_lim: {2}, self.lower_lim: {3}.'
               .format(self.elevation, self.camera_height, self.upper_lim, self.lower_lim))
+
+        model = FCRN(1)
+        model = nn.DataParallel(model).cuda(device)
+        resume_file = 'checkpoint/checkpoint.pth.tar'
+        print("=> loading checkpoint '{}'".format(resume_file))
+        checkpoint = torch.load(resume_file)
+        start_epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['state_dict'])
+        print("=> loaded checkpoint '{}' (epoch {})"
+              .format(resume_file, checkpoint['epoch']))
+
+        self.model = model.eval()
+
 
     def reset(self):
         self.RESET = True
 
-    # def _reset(self, goal_dist, soft=False):
-    #     # Create an empty map of some size
-    #     resolution = self.resolution = 5
-    #     self.selem = skimage.morphology.disk(10 / resolution)
-    #     self.selem_small = skimage.morphology.disk(1)
-    #     # 0 agent moves forward. Agent moves in the direction of +x
-    #     # 1 rotates left
-    #     # 2 rotates right
-    #     # 3 agent stop
-    #     self.z_bins = [self.lower_lim, self.upper_lim]
-    #     map_size_cm = np.maximum(self.map_size_cm, goal_dist * 2 * self.goal_f) // resolution
-    #     map_size_cm = int(map_size_cm * resolution)
-    #     self.map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1, len(self.z_bins) + 1),
-    #                         dtype=np.float32)
-    #     self.loc_on_map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1), dtype=np.float32)
-    #     self.current_loc = np.array([(self.map.shape[0] - 1) / 2, (self.map.shape[0] - 1) / 2, 0], np.float32)
-    #     self.current_loc[:2] = self.current_loc[:2] * resolution
-    #     self.camera = du.get_camera_matrix(256, 256, 90)
-    #     self.goal_loc = None
-    #     self.last_act = 3
-    #     self.locs = []
-    #     self.acts = []
-    #     self.last_pointgoal = None
-    #     if not soft:
-    #         self.num_resets = 0
-    #         self.count = self.count + 1
-    #         self.trials = 0
-    #         # self.rgbs = []
-    #         # self.depths = []
-    #         # self.fmms = []
-    #         # self.maps = []
-    #         self.rgbs_depths_fmms_maps = []
-    #         self.recovery_actions = []
-    #         self.thrashing_actions = []
-
     def _reset(self, goal_dist, soft=False):
+        # Create an empty map of some size
+        resolution = self.resolution = 5
+        self.selem = skimage.morphology.disk(10 / resolution)
+        self.selem_small = skimage.morphology.disk(1)
+        # 0 agent moves forward. Agent moves in the direction of +x
+        # 1 rotates left
+        # 2 rotates right
+        # 3 agent stop
+        self.z_bins = [self.lower_lim, self.upper_lim]
+        map_size_cm = np.maximum(self.map_size_cm, goal_dist * 2 * self.goal_f) // resolution
+        map_size_cm = int(map_size_cm * resolution)
+        self.map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1, len(self.z_bins) + 1),
+                            dtype=np.float32)
+        self.loc_on_map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1), dtype=np.float32)
+        self.current_loc = np.array([(self.map.shape[0] - 1) / 2, (self.map.shape[0] - 1) / 2, 0], np.float32)
+        self.current_loc[:2] = self.current_loc[:2] * resolution
+        self.camera = du.get_camera_matrix(256, 256, 90)
+        self.goal_loc = None
+        self.last_act = 3
+        self.locs = []
+        self.acts = []
+        self.last_pointgoal = None
         if not soft:
-            self.action_counter = 0
-            # Create an empty map of some size
-            resolution = self.resolution = 5
-            self.selem = skimage.morphology.disk(10 / resolution)
-            self.selem_small = skimage.morphology.disk(1)
-            # 0 agent moves forward. Agent moves in the direction of +x
-            # 1 rotates left
-            # 2 rotates right
-            # 3 agent stop
-            self.z_bins = [self.lower_lim, self.upper_lim]
-
-            self.camera = du.get_camera_matrix(256, 256, 90)
-
-            map_size_cm = np.maximum(self.map_size_cm, goal_dist * 2 * self.goal_f) // resolution
-            map_size_cm = int(map_size_cm * resolution)
-
-            self.loc_on_map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1), dtype=np.float32)
-            self.map = np.zeros((map_size_cm // resolution + 1, map_size_cm // resolution + 1, len(self.z_bins) + 1),
-                                dtype=np.float32)
-            self.current_loc = np.array([(self.map.shape[0] - 1) / 2, (self.map.shape[0] - 1) / 2, 0], np.float32)
-            self.current_loc[:2] = self.current_loc[:2] * resolution
-            self.goal_loc = None
-            self.last_act = 3
-            self.last_pointgoal = None
-            self.locs = []
-            self.acts = []
-
             self.num_resets = 0
             self.count = self.count + 1
             self.trials = 0
@@ -159,16 +133,14 @@ class DepthMapperAndPlanner(object):
                     traversible_open = skimage.morphology.binary_erosion(traversible_open, self.selem_small)
                 for i in range(n):
                     traversible_open = skimage.morphology.binary_dilation(traversible_open, self.selem_small)
-                planner = FMMPlanner(traversible_open, 360 // self.dt, self.action_counter)
-                # planner = FMMPlanner(traversible_open, 360 // self.dt)
+                planner = FMMPlanner(traversible_open, 360 // self.dt)
                 goal_loc_int = goal_loc // self.resolution
                 goal_loc_int = goal_loc_int.astype(np.int32)
                 reachable = planner.set_goal(goal_loc_int)
                 reachable = reachable[int(round(state[1])), int(round(state[0]))]
                 n = n - 1
         else:
-            planner = FMMPlanner(traversible, 360 // self.dt, self.action_counter)
-            # planner = FMMPlanner(traversible, 360 // self.dt)
+            planner = FMMPlanner(traversible, 360 // self.dt)
             goal_loc_int = goal_loc // self.resolution
             goal_loc_int = goal_loc_int.astype(np.int32)
             reachable = planner.set_goal(goal_loc_int)
@@ -254,12 +226,9 @@ class DepthMapperAndPlanner(object):
         self.num_resets = self.num_resets + 1
         xy = self.compute_xy_from_pointnav(pointgoal)
         # self.current_loc has been set inside reset
-        goal_loc = xy * 1
-        # self.goal_loc[0] = self.goal_loc[0] + self.current_loc[0]
-        # self.goal_loc[1] = self.goal_loc[1] + self.current_loc[1]
-
-        self.current_loc[0] = self.goal_loc[0] - goal_loc[0]
-        self.current_loc[1] = self.goal_loc[1] - goal_loc[1]
+        self.goal_loc = xy * 1
+        self.goal_loc[0] = self.goal_loc[0] + self.current_loc[0]
+        self.goal_loc[1] = self.goal_loc[1] + self.current_loc[1]
         self.mark_on_map(self.goal_loc)
         self.mark_on_map(self.current_loc)
         if self.num_resets == 6:
@@ -268,12 +237,6 @@ class DepthMapperAndPlanner(object):
             num_rots = int(np.round(180 / self.dt))
             self.recovery_actions = [1] * num_rots + [0] * 6
             self.num_resets = 0
-        # if self.num_resets == 3:
-        #     # We don't want to keep resetting. First few resets fix themselves,
-        #     # so do it for later resets.
-        #     num_rots = int(np.round(110 / self.dt))
-        #     self.recovery_actions = [1] * num_rots + [0] * 2
-        #     self.num_resets = 0
         else:
             self.recovery_actions = []
 
@@ -317,14 +280,11 @@ class DepthMapperAndPlanner(object):
         # pointgoal = obs['pointgoal'][i,...].detach().cpu().numpy()
         # rgb = obs['rgb'][i,...].detach().cpu().numpy().astype(np.uint8)
         rgb = obs['rgb'].astype(np.uint8)
-        depth = obs['depth']
+        input_var = torch.Tensor(rgb.transpose(2, 0, 1)[np.newaxis, ...]).type(torch.cuda.FloatTensor)
+        output = self.model(input_var)
+        depth = output[0].permute(1, 2, 0).data.cpu().numpy().astype(np.float32)
+        # depth = pred_depth_image / np.max(pred_depth_image)
         pointgoal = obs['pointgoal']
-
-        # self.num_rotation = (self.num_rotation + 1) % 36
-        # if self.num_rotation % 36 == 0:
-        #     self.add_observation(depth * 1000)
-        #     act = 1
-        #     return act
         # print(np.min(depth), np.max(depth))
         if done:
             if self.out_dir is not None and hasattr(self, 'locs'):
@@ -373,22 +333,14 @@ class DepthMapperAndPlanner(object):
         # self.maps.append(cv2.resize(self.map.astype(np.uint8), (256, 256)))   # (256, 256, 3)
         # self.fmms.append(cv2.resize(self.fmm_dist.astype(np.uint8), (256, 256)))  # (256, 256)
         # print((depth[...,0]*255)[..., np.newaxis].astype(np.uint8).repeat([3], axis=2).shape, rgb.shape, cv2.resize(self.map.astype(np.uint8), (256, 256)).shape, cv2.resize(self.fmm_dist.astype(np.uint8), (256, 256))[..., np.newaxis].repeat([3], axis=2).shape)
-
-        locs = np.array(self.locs).reshape([-1, 3])
-        map = self.map.astype(np.uint8)
-        fmm_dist = self.fmm_dist.astype(np.uint8)
-        # print((locs[:, 0] / 5).astype(int), (locs[:, 1] / 5).astype(int))
-        map[(locs[:, 1] / 5).astype(int), (locs[:, 0] / 5).astype(int)] = 255
-        fmm_dist[(locs[:, 1] / 5).astype(int), (locs[:, 0] / 5).astype(int)] = 255
-
         self.rgbs_depths_fmms_maps.append(np.concatenate((
                                                          (depth[..., 0] * 255)[..., np.newaxis].astype(np.uint8).repeat(
                                                              [3], axis=2), rgb,
-                                                         np.flip(cv2.resize(map, (256, 256)), 0),
-                                                         np.flip(cv2.resize(fmm_dist, (256, 256))[
+                                                         np.flip(cv2.resize(self.map.astype(np.uint8), (256, 256)), 0),
+                                                         np.flip(cv2.resize(self.fmm_dist.astype(np.uint8), (256, 256))[
                                                                      ..., np.newaxis].repeat([3], axis=2), 0)), axis=1))
         self.last_pointgoal = pointgoal + 0
-        self.action_counter += 1
+
         return act
 
     def write_mp4_imageio(self):
