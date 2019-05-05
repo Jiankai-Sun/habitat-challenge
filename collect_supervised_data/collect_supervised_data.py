@@ -160,7 +160,7 @@ def main():
 
     envs = make_env_fn(config_env=config_env, config_baseline=config_baseline, rank=0, episodes_index=0)
 
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=True,
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
                                   recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 
@@ -202,7 +202,7 @@ def main():
             observations, rewards, dones, infos = outputs
             counter += 1
             cv2.imwrite(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx),
-                                     "rgb_{0:04d}.png".format(counter)), observations['rgb'])
+                                     "rgb_{0:04d}.png".format(counter)), observations['rgb'][:, :, ::-1])
             np.save(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx),
                                  "depth_{0:04d}.npy".format(counter)), observations['depth'])
 
