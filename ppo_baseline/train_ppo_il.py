@@ -246,7 +246,7 @@ def main():
             outputs = envs.step(actions.item())
             # print(actions.item(), shortest_path_action)
             observations, rewards, done, infos = outputs
-
+            print(actions.item(), done)
             env_time += time() - t_step_env
 
             t_update_stats = time()
@@ -274,7 +274,7 @@ def main():
 
         prob_tensor = torch.stack(probs).to(device)
         st_actions_tensor = torch.stack(st_actions).to(device)
-        action_loss = criterion(prob_tensor, st_actions_tensor)
+        action_loss = criterion(prob_tensor, st_actions_tensor) * 1e4
         # print(prob_tensor.shape)
         optimizer.zero_grad()
         action_loss.backward()
