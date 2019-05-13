@@ -100,7 +100,7 @@ class DepthMapperAndPlanner(object):
     
     if self.close_small_openings:
       n = self.num_erosions
-      reachable = False
+      reachable = True
       '''
       while n >= 0 and not reachable:
         traversible_open = traversible.copy()
@@ -115,13 +115,16 @@ class DepthMapperAndPlanner(object):
         reachable = reachable[int(round(state[1])), int(round(state[0]))]
         n = n-1
       '''
+      traversible_open = traversible.copy()
       while n >= 0:
-        if not reachable:
-          traversible_open = traversible.copy()
-          for i in range(n):
-            traversible_open = skimage.morphology.binary_erosion(traversible_open, self.selem_small)
+        if reachable:
+          traversible_previous = traversible_open
           for i in range(n):
             traversible_open = skimage.morphology.binary_dilation(traversible_open, self.selem_small)
+          for i in range(n):
+            traversible_open = skimage.morphology.binary_erosion(traversible_open, self.selem_small)
+          # for i in range(n):
+          #   traversible_open = skimage.morphology.binary_dilation(traversible_open, self.selem_small)
           planner = FMMPlanner(traversible_open, 360//self.dt)
           goal_loc_int = goal_loc // self.resolution
           goal_loc_int = goal_loc_int.astype(np.int32)
@@ -129,6 +132,10 @@ class DepthMapperAndPlanner(object):
           reachable = reachable[int(round(state[1])), int(round(state[0]))]
           n = n-1
         else:
+          planner = FMMPlanner(traversible_previous, 360 // self.dt)
+          goal_loc_int = goal_loc // self.resolution
+          goal_loc_int = goal_loc_int.astype(np.int32)
+          reachable = planner.set_goal(goal_loc_int)
           break
     else:
       planner = FMMPlanner(traversible, 360//self.dt)

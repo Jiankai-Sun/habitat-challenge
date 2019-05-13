@@ -25,9 +25,10 @@ class FMMPlanner():
         traversible_ma[goal_y, goal_x] = 0
         dd = skfmm.distance(traversible_ma, dx=1)
         # print('dd: ', dd)
-        dd_mask = np.invert(np.isnan(ma.filled(dd, np.nan)))
+        dd_mask = np.invert(np.isnan(ma.filled(dd, np.nan)))  # False: unreachable, True: reachable
         # print('dd_mask: ', dd_mask)
-        dd = ma.filled(dd, np.max(dd)+1)
+        # dd = ma.filled(dd, np.max(dd)+1)
+        dd = ma.filled(dd, np.inf)
         self.fmm_dist = dd
         # print('fmm_dist: ', self.fmm_dist)
         return dd_mask

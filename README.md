@@ -13,7 +13,8 @@ ppo_baseline_v0.03: actually map-plan-baseline, spl=0.923
 ppo_baseline_v0.04: map_and_plan dev
 ppo_baseline_v0.05: imitation learning
 ppo_baseline_v0.06: AStar Planner
-ppo_baseline_v0.07: map-plan-baseline improved.
+ppo_baseline_v0.07: map-plan-baseline `2 steps plan`.
+ppo_baseline_v0.08: actually map-plan-baseline, spl=0.923, for submit
 evaluate_ppo_vis_single_env.py: add visualization of V-saliency (depth v-saliency, rgb v-saliency)
 ```
 ### Development
