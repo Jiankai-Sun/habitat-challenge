@@ -20,7 +20,8 @@ from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 import numpy as np
 import cv2
 
-from map_and_plan_agent.slam import DepthMapperAndPlanner
+# from map_and_plan_agent.slam import DepthMapperAndPlanner
+from map_and_plan_agent.slam_custom import DepthMapperAndPlanner
 
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
@@ -30,6 +31,7 @@ class NavRLEnv(habitat.RLEnv):
         self._previous_action = None
         self._episode_distance_covered = None
         super().__init__(config_env, dataset)
+        self.scene_id = None
 
     def reset(self):
         self._previous_action = None
@@ -39,6 +41,7 @@ class NavRLEnv(habitat.RLEnv):
         self._previous_target_distance = self.habitat_env.current_episode.info[
             "geodesic_distance"
         ]
+
         return observations, self.habitat_env.current_episode.scene_id
 
     def step(self, action):
@@ -98,6 +101,7 @@ class NavRLEnv(habitat.RLEnv):
 def make_env_fn(config_env, config_baseline, rank, episodes_index=0):
     dataset = PointNavDatasetV1(config_env.DATASET)
     config_env.defrost()
+    config_env.ENVIRONMENT.MAX_EPISODE_STEPS = 2000
     config_env.SIMULATOR.SCENE = dataset.episodes[episodes_index].scene_id  # data/scene_datasets/gibson/Cantwell.glb
     config_env.freeze()
     env = NavRLEnv(
@@ -110,18 +114,17 @@ PAUSE_TIME = 100
 
 def main():
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--model-path", default=None, type=str)
-    # parser.add_argument(
-    #     "--sim-gpu-id",
-    #     nargs='+',
-    #     type=int,
-    #     required=True,
-    #     default=[0],
-    #     help="gpu id on which scenes are loaded",
-    # )
+    parser.add_argument("--model-path", default=None, type=str)
+    parser.add_argument(
+        "--sim-gpu-id",
+        nargs='+',
+        type=int,
+        default=[0],
+        help="gpu id on which scenes are loaded",
+    )
     parser.add_argument("--num-processes", type=int, default=1)
     parser.add_argument("--hidden-size", type=int, default=512)
-    parser.add_argument("--count-test-episodes", type=int, default=5040000)
+    parser.add_argument("--count-test-episodes", type=int, default=88)
     parser.add_argument(
         "--sensors",
         type=str,
@@ -139,8 +142,14 @@ def main():
     parser.add_argument(
         "--outdir",
         type=str,
-        default="data/il_training_data",
+        default="data/habitat_training_data_tmp",
         help="directory to save result",
+    )
+    parser.add_argument(
+        "--random-agent",
+        action="store_true",
+        default=False,
+        help="use random agent",
     )
     args = parser.parse_args()
 
@@ -159,72 +168,82 @@ def main():
     config_baseline = cfg_baseline()
 
     envs = make_env_fn(config_env=config_env, config_baseline=config_baseline, rank=0, episodes_index=0)
-
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
-                                  reset_if_drift=True, count=-1, close_small_openings=True,
-                                  recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
-
-    episode_rewards = np.zeros((1, 1))
-    episode_counts = np.zeros((1, 1))
-    current_episode_reward = np.zeros((1, 1))
+    if not args.random_agent:
+        agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=True,
+                                      reset_if_drift=True, count=-1, close_small_openings=True,
+                                      recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 
     test_episodes = 0
+    prev_scene_id = None
+    total_counter = -1
+    if args.random_agent:
+        while test_episodes < args.count_test_episodes:
+            observations, scene_id = envs.reset()
+            total_counter += 1
+            if total_counter != 577:
+                print(total_counter)
+                continue
+            # if scene_id == prev_scene_id:
+            #     continue
+            prev_scene_id = scene_id
+            episode_counter = 0
+            cv2.imwrite(os.path.join(args.outdir, "rgb_{0:02d}_{1:07d}.png".format(test_episodes, episode_counter)), observations['rgb'])
+            np.save(os.path.join(args.outdir, "depth_{0:02d}_{1:07d}".format(test_episodes, episode_counter)), observations['depth'])
+            if not args.random_agent:
+                agent.reset()
+            while episode_counter < 1000:
+                episode_counter = episode_counter + 1
+                if args.random_agent:
+                    actions = np.random.randint(3)
+                else:
+                    actions = agent.act(observations=observations)
+                    actions = np.random.randint(3)
 
-    record_file = open(os.path.join(args.outdir, 'record.txt'), "w")
+                observations, rewards, dones, infos = envs.step(actions)
+                # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
 
-    while test_episodes < args.count_test_episodes:
-        observations, scene_id = envs.reset()
-        scene_id = scene_id.split('/')[-1].split('.')[0]
-        if not os.path.exists(os.path.join(args.outdir, scene_id)):
-            os.makedirs(os.path.join(args.outdir, scene_id))
-            scene_instance_idx = 0
+                cv2.imwrite(os.path.join(args.outdir, "rgb_{0:02d}_{1:07d}.png".format(test_episodes, episode_counter)), observations['rgb'])
+                np.save(os.path.join(args.outdir, "depth_{0:02d}_{1:07d}".format(test_episodes, episode_counter)), observations['depth'])
 
-        os.makedirs(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx)))
-        print('Directory {} is created!'.format(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx))))
-        counter = 0
+            print('Episode {0}:'.format(test_episodes))
+            test_episodes += 1
+    else:
+        while test_episodes < 1000:
+            observations, scene_id = envs.reset()
+            total_counter += 1
+            if total_counter != 577 and total_counter != 578:
+                print(total_counter)
+                continue
+            # if scene_id == prev_scene_id:
+            #     continue
+            prev_scene_id = scene_id
+            episode_counter = 0
+            # cv2.imwrite(os.path.join(args.outdir, "rgb_{0:02d}_{1:07d}.png".format(test_episodes, episode_counter)),
+            #             observations['rgb'])
+            # np.save(os.path.join(args.outdir, "depth_{0:02d}_{1:07d}".format(test_episodes, episode_counter)),
+            #         observations['depth'])
+            if not args.random_agent:
+                agent.reset()
+            while episode_counter < 500:
+                episode_counter = episode_counter + 1
+                if args.random_agent:
+                    actions = np.random.randint(3)
+                else:
+                    actions = agent.act(observations=observations)
+                    actions = np.random.randint(3)
 
-        cv2.imwrite(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "rgb_{0:04d}.png".format(counter)), observations['rgb'][:, :, ::-1])
-        np.save(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "depth_{0:04d}.npy".format(counter)), observations['depth'])
+                observations, rewards, dones, infos = envs.step(actions)
+                # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
 
-        dones = False
+                # cv2.imwrite(os.path.join(args.outdir, "rgb_{0:02d}_{1:07d}.png".format(test_episodes, episode_counter)),
+                #             observations['rgb'])
+                # np.save(os.path.join(args.outdir, "depth_{0:02d}_{1:07d}".format(test_episodes, episode_counter)),
+                #         observations['depth'])
 
-        agent.reset()
+            print('Episode {0}:'.format(test_episodes))
+            test_episodes += 1
 
-        while not dones:
-            actions = agent.act(observations=observations)
-            record_file.write("{0},{1},{2}\n".format(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "rgb_{0:04d}.png".format(counter)),
-                                                   os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "depth_{0:04d}.npy".format(counter)),
-                                                   actions))
-            record_file.flush()
-            outputs = envs.step(actions)
-
-            # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
-            observations, rewards, dones, infos = outputs
-            counter += 1
-            cv2.imwrite(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx),
-                                     "rgb_{0:04d}.png".format(counter)), observations['rgb'][:, :, ::-1])
-            np.save(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx),
-                                 "depth_{0:04d}.npy".format(counter)), observations['depth'])
-
-            not_done_masks = np.array(
-                [0.0 if dones else 1.0],
-                dtype=np.float,
-            )
-
-            rewards = np.array(
-                [rewards], dtype=np.float
-            )[np.newaxis, ...]
-            current_episode_reward += rewards
-            episode_rewards += (1 - not_done_masks) * current_episode_reward
-            episode_counts += 1 - not_done_masks
-            current_episode_reward *= not_done_masks
-
-        scene_instance_idx += 1
-        print(counter)
-        print('Episode {0}:'.format(test_episodes))
-        test_episodes += 1
-    record_file.close()
-    print('Data collection finished!')
+    print('Eval Finished!')
 
 
 if __name__ == "__main__":

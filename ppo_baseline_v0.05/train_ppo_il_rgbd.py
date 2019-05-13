@@ -22,12 +22,13 @@ from config.default import cfg as cfg_baseline
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 # from rl.ppo import PPO, Policy,
 from rl.ppo.ppo_alg import PPO
-from rl.ppo.policy import Policy
+from rl.ppo.policy_rgbd import Policy
 from rl.ppo.ppo_utils import update_linear_schedule, ppo_args, batch_obs, RolloutStorage
 from tensorboardX import SummaryWriter
 import torch.optim as optim
 
 from shortest_path_follower import ShortestPathFollower, name2action
+
 
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
@@ -87,9 +88,9 @@ class NavRLEnv(habitat.RLEnv):
         # ):
         #     return True
         if (
-            self._previous_action
-            == name2action[SimulatorActions.STOP.name]
-            and self._distance_target() < self._config_env.SUCCESS_DISTANCE
+                self._previous_action
+                == name2action[SimulatorActions.STOP.name]
+                and self._distance_target() < self._config_env.SUCCESS_DISTANCE
         ):
             return True
         return False
@@ -181,7 +182,6 @@ def main():
         )
     )
 
-
     t_start = time()
     env_time = 0
     pth_time = 0
@@ -208,12 +208,10 @@ def main():
         observations = envs.reset()
         observations = [observations]
         batch = batch_obs(observations, device)
-        if done:
-            recurrent_hidden_states = torch.zeros(
-                1, 1, args.hidden_size
-            ).to(device)
+        recurrent_hidden_states = torch.tensor(np.zeros(
+            1, 1, args.hidden_size
+        )).to(device)
         masks = torch.ones(1, 1, 1).to(device)
-        recurrent_hidden_states = torch.tensor(recurrent_hidden_states.detach().cpu().numpy()).to(device)
         # print('Env reset!')
 
         probs = []
@@ -244,9 +242,8 @@ def main():
             )
             shortest_path_action = name2action[shortest_path_action.name]
             outputs = envs.step(actions.item())
-            # print(actions.item(), shortest_path_action)
+            # print(actions.item(), shortest_path_action, done)
             observations, rewards, done, infos = outputs
-            print(actions.item(), done)
             env_time += time() - t_step_env
 
             t_update_stats = time()
@@ -302,7 +299,9 @@ def main():
 
             logger.info(
                 "update: {}\tenv-time: {:.3f}s\tpth-time: {:.3f}s\t"
-                "frames: {} action_loss_avg: {:3f} avg_rewards: {:3f} avg_episode_spls: {:3f}".format(update, env_time, pth_time, count_steps, action_loss_avg, avg_rewards, avg_episode_spls)
+                "frames: {} action_loss_avg: {:3f} avg_rewards: {:3f} avg_episode_spls: {:3f}, current_episode_spls: {:3f}".format(
+                    update, env_time, pth_time, count_steps, action_loss_avg, avg_rewards, avg_episode_spls,
+                    episode_spls)
             )
 
         # checkpoint model
@@ -319,6 +318,7 @@ def main():
 
     writer.export_scalars_to_json("./all_scalars.json")
     writer.close()
+
 
 if __name__ == "__main__":
     main()

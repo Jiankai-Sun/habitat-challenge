@@ -1,3 +1,3 @@
 # nvidia-docker run --storage-opt size=100G -v /mnt/lustre/sunjiankai/lustrenew/Program/habitat-challenge/ppo_baseline:/habitat-baseline -v /data/sunjiankai/Dataset/habitat_data:/habitat-api/data -it registry.sensetime.com/habitat/jack/habitat:v0.05 /bin/bash
-nvidia-docker run -v /mnt/lustre/sunjiankai/lustrenew/Program/habitat-challenge/ppo_baseline_d_star_lite:/habitat-baseline -v /data/sunjiankai/Dataset/habitat_data:/habitat-api/data -it registry.sensetime.com/habitat/jack/habitat:v0.05 /bin/bash
+nvidia-docker run -v /mnt/lustre/sunjiankai/lustrenew/Program/habitat-challenge/ppo_baseline:/habitat-baseline -v /data/sunjiankai/Dataset/habitat_data:/habitat-api/data -it registry.sensetime.com/habitat/jack/habitat:v0.07 /bin/bash
 # --storage-opt dm.basesize=100G

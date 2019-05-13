@@ -67,10 +67,10 @@ class Net(nn.Module):
     def __init__(self, observation_space, hidden_size):
         super().__init__()
 
-        if "rgb" in observation_space.spaces:
-            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
-        else:
-            self._n_input_rgb = 0
+        # if "rgb" in observation_space.spaces:
+        #     self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
+        # else:
+        self._n_input_rgb = 0
         if "depth" in observation_space.spaces:
             self._n_input_depth = observation_space.spaces["depth"].shape[2]
         else:

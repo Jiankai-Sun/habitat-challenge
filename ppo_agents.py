@@ -8,7 +8,7 @@ import argparse
 
 import habitat
 from habitat import Config
-from ppo_baseline.map_and_plan_agent.bak.slam import DepthMapperAndPlanner
+from ppo_baseline.map_and_plan_agent.slam import DepthMapperAndPlanner
 
 
 def get_defaut_config():
@@ -35,7 +35,7 @@ def main():
     config.INPUT_TYPE = args.input_type
     config.MODEL_PATH = args.model_path
 
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=False,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
                                   recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 

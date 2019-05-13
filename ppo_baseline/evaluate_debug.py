@@ -3,14 +3,11 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
-'''
-python collect_data.py --sim-gpu-id 0 --num-processes 1
-'''
 import sys
 sys.path.insert(0, './map_and_plan_agent/')
 import argparse
 import os
+import torch
 
 import habitat
 from habitat.config.default import get_config
@@ -18,7 +15,6 @@ from config.default import cfg as cfg_baseline
 from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 import numpy as np
-import cv2
 
 from map_and_plan_agent.slam import DepthMapperAndPlanner
 
@@ -39,7 +35,7 @@ class NavRLEnv(habitat.RLEnv):
         self._previous_target_distance = self.habitat_env.current_episode.info[
             "geodesic_distance"
         ]
-        return observations, self.habitat_env.current_episode.scene_id
+        return observations
 
     def step(self, action):
         self._previous_action = action
@@ -110,18 +106,19 @@ PAUSE_TIME = 100
 
 def main():
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--model-path", default=None, type=str)
-    # parser.add_argument(
-    #     "--sim-gpu-id",
-    #     nargs='+',
-    #     type=int,
-    #     required=True,
-    #     default=[0],
-    #     help="gpu id on which scenes are loaded",
-    # )
-    parser.add_argument("--num-processes", type=int, default=1)
+    parser.add_argument("--model-path", default=None, type=str)
+    parser.add_argument(
+        "--sim-gpu-id",
+        nargs='+',
+        type=int,
+        required=True,
+        default=[0],
+        help="gpu id on which scenes are loaded",
+    )
+    parser.add_argument("--pth-gpu-id", type=int, required=True)
+    parser.add_argument("--num-processes", type=int, required=True)
     parser.add_argument("--hidden-size", type=int, default=512)
-    parser.add_argument("--count-test-episodes", type=int, default=5040000)
+    parser.add_argument("--count-test-episodes", type=int, default=100)
     parser.add_argument(
         "--sensors",
         type=str,
@@ -133,22 +130,31 @@ def main():
     parser.add_argument(
         "--task-config",
         type=str,
-        default="tasks/pointnav_gibson_rgbd.yaml",
+        default="tasks/pointnav.yaml",
         help="path to config yaml containing information about task",
     )
     parser.add_argument(
         "--outdir",
         type=str,
-        default="data/il_training_data",
+        default="data/slam_result/out_dir",
         help="directory to save result",
+    )
+    parser.add_argument(
+        "--random-agent",
+        action="store_true",
+        default=False,
+        help="use random agent",
     )
     args = parser.parse_args()
 
     if not os.path.exists(args.outdir):
         os.makedirs(args.outdir)
 
+    device = torch.device("cuda:{}".format(args.pth_gpu_id))
+
     config_env = get_config(config_file=args.task_config)
     config_env.defrost()
+    config_env.DATASET.SPLIT = "val"
 
     agent_sensors = config_env.SIMULATOR.AGENT_0.SENSORS
 
@@ -160,71 +166,76 @@ def main():
 
     envs = make_env_fn(config_env=config_env, config_baseline=config_baseline, rank=0, episodes_index=0)
 
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=False,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
                                   recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 
-    episode_rewards = np.zeros((1, 1))
-    episode_counts = np.zeros((1, 1))
-    current_episode_reward = np.zeros((1, 1))
+    episode_rewards = torch.zeros(1, 1, device=device)
+    episode_spls = torch.zeros(1, 1, device=device)
+    episode_success = torch.zeros(1, 1, device=device)
+    episode_counts = torch.zeros(1, 1, device=device)
+    current_episode_reward = torch.zeros(1, 1, device=device)
 
     test_episodes = 0
-
-    record_file = open(os.path.join(args.outdir, 'record.txt'), "w")
-
+    spl_np = np.zeros((1000, 3))
     while test_episodes < args.count_test_episodes:
-        observations, scene_id = envs.reset()
-        scene_id = scene_id.split('/')[-1].split('.')[0]
-        if not os.path.exists(os.path.join(args.outdir, scene_id)):
-            os.makedirs(os.path.join(args.outdir, scene_id))
-            scene_instance_idx = 0
-
-        os.makedirs(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx)))
-        print('Directory {} is created!'.format(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx))))
-        counter = 0
-
-        cv2.imwrite(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "rgb_{0:04d}.png".format(counter)), observations['rgb'][:, :, ::-1])
-        np.save(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "depth_{0:04d}.npy".format(counter)), observations['depth'])
+        observations = envs.reset()
 
         dones = False
 
         agent.reset()
 
         while not dones:
-            actions = agent.act(observations=observations)
-            record_file.write("{0},{1},{2}\n".format(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "rgb_{0:04d}.png".format(counter)),
-                                                   os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx), "depth_{0:04d}.npy".format(counter)),
-                                                   actions))
-            record_file.flush()
+            if args.random_agent:
+                actions = np.random.randint(4)
+            else:
+                actions = agent.act(observations=observations)
+
             outputs = envs.step(actions)
 
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
-            counter += 1
-            cv2.imwrite(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx),
-                                     "rgb_{0:04d}.png".format(counter)), observations['rgb'][:, :, ::-1])
-            np.save(os.path.join(args.outdir, scene_id, '{0:06d}'.format(scene_instance_idx),
-                                 "depth_{0:04d}.npy".format(counter)), observations['depth'])
 
-            not_done_masks = np.array(
+            not_done_masks = torch.tensor(
                 [0.0 if dones else 1.0],
-                dtype=np.float,
+                dtype=torch.float,
+                device=device,
             )
 
-            rewards = np.array(
-                [rewards], dtype=np.float
-            )[np.newaxis, ...]
+            for i in range(not_done_masks.shape[0]):
+                if not_done_masks[i].item() == 0:
+                    episode_spls[i] += infos["spl"]
+                    spl_record = infos["spl"]
+                    if infos["spl"] > 0:
+                        episode_success[i] += 1
+
+            rewards = torch.tensor(
+                [rewards], dtype=torch.float, device=device
+            ).unsqueeze(1)
             current_episode_reward += rewards
             episode_rewards += (1 - not_done_masks) * current_episode_reward
             episode_counts += 1 - not_done_masks
+            current_episode_reward_data = current_episode_reward.item()
             current_episode_reward *= not_done_masks
 
-        scene_instance_idx += 1
-        print(counter)
+        episode_reward_mean = (episode_rewards / episode_counts).mean().item()
+        episode_spl_mean = (episode_spls / episode_counts).mean().item()
+        episode_success_mean = (episode_success / episode_counts).mean().item()
+
         print('Episode {0}:'.format(test_episodes))
+        print("Average episode reward: {:.6f}".format(episode_reward_mean))
+        print("Average episode success: {:.6f}".format(episode_success_mean))
+        print("Average episode spl: {:.6f}".format(episode_spl_mean))
+        print("Episode reward: {:.6f}".format(current_episode_reward_data))
+        print("Episode success: {0}".format(infos["spl"] > 0))
+        print("Episode spl: {:.6f}".format(infos["spl"]))
+        spl_np[test_episodes, 0] = test_episodes
+        spl_np[test_episodes, 1] = infos["spl"]
+        spl_np[test_episodes, 2] = episode_spl_mean
+
         test_episodes += 1
-    record_file.close()
-    print('Data collection finished!')
+        np.savetxt(os.path.join(args.outdir, 'spls.txt'), spl_np)
+    print('Eval Finished!')
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from rl.ppo.policy import Policy
 from rl.ppo.ppo_utils import update_linear_schedule, ppo_args, batch_obs, RolloutStorage
 from tensorboardX import SummaryWriter
 
+
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
         self._config_env = config_env.TASK

@@ -71,7 +71,28 @@ fi
 #    --checkpoint-interval 50 \
 #    --task-config "tasks/pointnav_gibson.yaml" \
 
-python -u train_ppo_il.py \
+#python -u train_ppo_il_rgb.py \
+#    --use-gae \
+#    --sim-gpu-id 0 \
+#    --pth-gpu-id 1 \
+#    --lr 2.5e-4 \
+#    --clip-param 0.1 \
+#    --value-loss-coef 0.5 \
+#    --num-processes 1 \
+#    --num-steps 128 \
+#    --num-mini-batch 1 \
+#    --num-updates 10000000000 \
+#    --use-linear-lr-decay \
+#    --use-linear-clip-decay \
+#    --entropy-coef 0.01 \
+#    --tb-log-dir "data/tb_log/tb_rgb_log" \
+#    --log-file "data/train_rgb.log" \
+#    --log-interval 5 \
+#    --checkpoint-folder "data/checkpoints_rgb" \
+#    --checkpoint-interval 50 \
+#    --task-config "configs/tasks/pointnav_gibson_rgb.yaml" \
+
+python -u train_ppo_il_rgbd.py \
     --use-gae \
     --sim-gpu-id 0 \
     --pth-gpu-id 1 \
@@ -85,9 +106,9 @@ python -u train_ppo_il.py \
     --use-linear-lr-decay \
     --use-linear-clip-decay \
     --entropy-coef 0.01 \
-    --tb-log-dir "data/tb_log/tb_rgb_log" \
-    --log-file "data/train_rgb.log" \
+    --tb-log-dir "data/tb_log/tb_rgbd_log" \
+    --log-file "data/train_rgbd.log" \
     --log-interval 5 \
-    --checkpoint-folder "data/checkpoints_rgb" \
+    --checkpoint-folder "data/checkpoints_rgbd" \
     --checkpoint-interval 50 \
-    --task-config "configs/tasks/pointnav_gibson_rgb.yaml" \
+    --task-config "configs/tasks/pointnav_gibson_rgbd.yaml" \
