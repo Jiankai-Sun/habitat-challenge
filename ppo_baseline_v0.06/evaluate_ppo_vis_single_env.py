@@ -16,7 +16,7 @@ from habitat.sims.habitat_simulator import SimulatorActions, SIM_NAME_TO_ACTION
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 import numpy as np
 
-from map_and_plan_agent.slam_rgb import DepthMapperAndPlanner
+from map_and_plan_agent.slam_orig import DepthMapperAndPlanner
 
 class NavRLEnv(habitat.RLEnv):
     def __init__(self, config_env, config_baseline, dataset):
@@ -139,12 +139,6 @@ def main():
         default="data/slam_result/out_dir",
         help="directory to save result",
     )
-    parser.add_argument(
-        "--random-agent",
-        action="store_true",
-        default=False,
-        help="use random agent",
-    )
     args = parser.parse_args()
 
     if not os.path.exists(args.outdir):
@@ -177,8 +171,7 @@ def main():
     current_episode_reward = torch.zeros(1, 1, device=device)
 
     test_episodes = 0
-    spl_record = 1
-    spl_np = np.zeros((1000, 2))
+    spl_np = np.zeros((1000, 3))
     while test_episodes < args.count_test_episodes:
         observations = envs.reset()
 
@@ -187,10 +180,7 @@ def main():
         agent.reset()
 
         while not dones:
-            if args.random_agent:
-                actions = np.random.randint(4)
-            else:
-                actions = agent.act(observations=observations)
+            actions = agent.act(observations=observations)
 
             outputs = envs.step(actions)
 
@@ -232,6 +222,7 @@ def main():
         print("Episode spl: {:.6f}".format(infos["spl"]))
         spl_np[test_episodes, 0] = test_episodes
         spl_np[test_episodes, 1] = infos["spl"]
+        spl_np[test_episodes, 2] = episode_spl_mean
 
         test_episodes += 1
         np.savetxt(os.path.join(args.outdir, 'spls.txt'), spl_np)

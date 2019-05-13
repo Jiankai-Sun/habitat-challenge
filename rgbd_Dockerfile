@@ -9,6 +9,7 @@ RUN /bin/bash -c ". activate habitat; pip uninstall -y habitat; cd habitat-api; 
 
 # install libsm6
 # RUN /bin/bash -c "apt-get update; apt-get install -y libsm6 liboctomap-dev ffmpeg; . activate habitat; pip install opencv-contrib-python scikit-image==0.15.0 scikit-fmm numpy-quaternion numba"
+# RUN /bin/bash -c "apt-get update; apt-get install -y libsm6; . activate habitat; pip install opencv-contrib-python scikit-image==0.15.0 scikit-fmm"
 RUN /bin/bash -c ". activate habitat; pip install scikit-image==0.15.0 scikit-fmm"
 # conda install -y mpi4py
 

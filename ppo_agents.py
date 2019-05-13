@@ -35,7 +35,7 @@ def main():
     config.INPUT_TYPE = args.input_type
     config.MODEL_PATH = args.model_path
 
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=False,
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=None, mark_locs=True,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
                                   recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 

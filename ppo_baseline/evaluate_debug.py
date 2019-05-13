@@ -166,7 +166,7 @@ def main():
 
     envs = make_env_fn(config_env=config_env, config_baseline=config_baseline, rank=0, episodes_index=0)
 
-    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=False,
+    agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=True,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
                                   recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
 

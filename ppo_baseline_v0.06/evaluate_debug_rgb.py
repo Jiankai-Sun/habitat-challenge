@@ -168,7 +168,7 @@ def main():
 
     agent = DepthMapperAndPlanner(map_size_cm=1200, out_dir=args.outdir, mark_locs=True,
                                   reset_if_drift=True, count=-1, close_small_openings=True,
-                                  recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2)
+                                  recover_on_collision=True, fix_thrashing=True, goal_f=1.1, point_cnt=2, device=device)
 
     episode_rewards = torch.zeros(1, 1, device=device)
     episode_spls = torch.zeros(1, 1, device=device)
@@ -178,7 +178,7 @@ def main():
 
     test_episodes = 0
     spl_record = 1
-    spl_np = np.zeros((1000, 2))
+    spl_np = np.zeros((1000, 3))
     while test_episodes < args.count_test_episodes:
         observations = envs.reset()
 
@@ -232,6 +232,7 @@ def main():
         print("Episode spl: {:.6f}".format(infos["spl"]))
         spl_np[test_episodes, 0] = test_episodes
         spl_np[test_episodes, 1] = infos["spl"]
+        spl_np[test_episodes, 2] = episode_spl_mean
 
         test_episodes += 1
         np.savetxt(os.path.join(args.outdir, 'spls.txt'), spl_np)

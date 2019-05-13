@@ -9,6 +9,16 @@ bash evaluate_debug.sh
 cd map_and_plan_agent; python make_vis.py
 ```
 
+RGB Track
+```
+python -u evaluate_debug_rgb.py \
+    --sim-gpu-id 0 \
+    --pth-gpu-id 0 \
+    --num-processes 1 \
+    --count-test-episodes 1000 \
+    --outdir data/slam_result/out_dir_baseline+rgb2depth \
+    --task-config "tasks/pointnav_gibson_rgb.yaml" \
+```
 ### Abstract
 This baseline implements a basic *classical* map building and path planning algorithm for
 the task of reaching a specified point under known odometry with depth images
