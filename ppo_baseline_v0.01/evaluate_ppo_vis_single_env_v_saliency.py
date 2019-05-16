@@ -102,7 +102,7 @@ PAUSE_TIME = 100
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, required=True)
-    parser.add_argument("--sim-gpu-id", type=int, required=True)
+    # parser.add_argument("--sim-gpu-id", type=int, required=True)
     parser.add_argument("--pth-gpu-id", type=int, required=True)
     parser.add_argument("--num-processes", type=int, required=True)
     parser.add_argument("--hidden-size", type=int, default=512)
@@ -222,16 +222,16 @@ def main():
                 os.makedirs(os.path.join("data", "video", str(video_folder_index)))
             action_times += 1
 
-            with torch.no_grad():
-                value, actions, _, test_recurrent_hidden_states = actor_critic.act(
-                    batch,
-                    test_recurrent_hidden_states,
-                    not_done_masks,
-                    deterministic=False,
-                )
+            # with torch.no_grad():
+            value, actions, _, test_recurrent_hidden_states = actor_critic.act(
+                batch,
+                test_recurrent_hidden_states,
+                not_done_masks,
+                deterministic=False,
+            )
 
             outputs = envs.step(actions.item())
-            '''
+
             # Get value Saliency
             value.backward()
             # print(batch['rgb'][0].shape) # shape: （256, 256, 3)
@@ -248,7 +248,7 @@ def main():
             # cv2.imshow("Habitat-API Evaluation", mat)
             # cv2.moveWindow("Habitat-API Evaluation", 0, 0)
             # cv2.waitKey(PAUSE_TIME)
-            
+
             if 'rgb' in batch.keys() and not 'depth' in batch.keys():
                 cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
                             np.concatenate((observations[0]['rgb'], value_saliency.cpu()), axis=1))  # (90, 120, 3)
@@ -258,14 +258,7 @@ def main():
                 cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
                             np.concatenate((observations[0]['rgb'][0], observations[0]['depth'], value_saliency.cpu()), axis=1))  # (90, 120, 3)
                 img_width = img_width * 3
-            '''
-            # cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
-            #             observations[0]['rgb'][:, :, ::-1]) # (90, 120, 3)
 
-            cv2.imwrite(os.path.join("data", "video", str(video_folder_index), str(action_times) + ".png"),
-                        np.concatenate((observations[0]['rgb'][:, :, ::-1], (observations[0]['depth'] * 255).repeat([3], axis=2)),
-                                       axis=1))  # (90, 120, 3)
-            img_width = img_width * 2
             # observations: [{'rgb': array([...], dtype=uint8)}, {'depth': array([...], dtype=float32)}, 'pointgoal': array([5.6433434, 2.70739  ], dtype=float32)}]
             observations, rewards, dones, infos = outputs
             observations = [observations]
