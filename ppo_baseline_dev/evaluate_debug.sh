@@ -11,5 +11,5 @@ python -u evaluate_debug.py \
     --pth-gpu-id 0 \
     --num-processes 1 \
     --count-test-episodes 1000 \
-    --outdir data/slam_result/out_dir_gupta_orig \
+    --outdir data/slam_result/out_dir_gupta_2 \
     --task-config "tasks/pointnav_gibson_rgbd.yaml" \

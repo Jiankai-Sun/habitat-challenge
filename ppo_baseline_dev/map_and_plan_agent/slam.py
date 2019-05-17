@@ -77,7 +77,7 @@ class DepthMapperAndPlanner(object):
     d = depth[:,:,0]*1
     d[d == 0] = np.NaN
     d[d > 990] = np.NaN
-    XYZ1 = du.get_point_cloud_from_z(d, self.camera);
+    XYZ1 = du.get_point_cloud_from_z(d, self.camera)
     # print(np.min(XYZ1.reshape(-1,3), 0), np.max(XYZ1.reshape(-1,3), 0))
     XYZ2 = du.make_geocentric(XYZ1*1, self.camera_height, self.elevation)
     # print(np.min(XYZ2.reshape(-1,3), 0), np.max(XYZ2.reshape(-1,3), 0))
@@ -100,8 +100,8 @@ class DepthMapperAndPlanner(object):
     
     if self.close_small_openings:
       n = self.num_erosions
-      reachable = True
-      '''
+      reachable = False
+
       while n >= 0 and not reachable:
         traversible_open = traversible.copy()
         for i in range(n):
@@ -115,6 +115,7 @@ class DepthMapperAndPlanner(object):
         reachable = reachable[int(round(state[1])), int(round(state[0]))]
         n = n-1
       '''
+      reachable = True
       traversible_open = traversible.copy()
       while n >= 0:
         if reachable:
@@ -137,6 +138,7 @@ class DepthMapperAndPlanner(object):
           goal_loc_int = goal_loc_int.astype(np.int32)
           reachable = planner.set_goal(goal_loc_int)
           break
+      '''
     else:
       planner = FMMPlanner(traversible, 360//self.dt)
       goal_loc_int = goal_loc // self.resolution

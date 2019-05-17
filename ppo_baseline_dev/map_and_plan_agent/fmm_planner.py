@@ -146,6 +146,8 @@ class FMMPlanner():
             # print(1, max_margin_act, max_margin_state)
             return max_margin_act, max_margin_state
 
+
+
     def compare_goal(self, a, goal_dist):
         goal_dist = self.fmm_dist
         x,y,t = a
